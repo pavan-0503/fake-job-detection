@@ -57,9 +57,9 @@ def download_file_from_google_drive(file_id, destination):
             with tqdm(total=total_size, unit='B', unit_scale=True, disable=total_size==0) as pbar:
                 for chunk in response.iter_content(block_size):
                     if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    pbar.update(len(chunk))
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        pbar.update(len(chunk))
     
     print(f"✅ Download complete! ({downloaded / (1024*1024):.2f} MB)")
 
