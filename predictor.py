@@ -12,7 +12,6 @@ from transformers import DistilBertTokenizer, DistilBertModel
 import os
 import warnings
 from datetime import datetime
-import dateparser
 warnings.filterwarnings('ignore')
 
 
@@ -319,9 +318,16 @@ class FakeJobPredictor:
             for match in matches:
                 date_str = match.group(1).strip()
                 
-                # Try to parse the date using dateparser
+                # Try to parse the date using common formats
                 try:
-                    parsed_date = dateparser.parse(date_str, settings={'PREFER_DATES_FROM': 'past'})
+                    parsed_date = None
+                    # Try common date formats
+                    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%B %d, %Y', '%d %B %Y']:
+                        try:
+                            parsed_date = datetime.strptime(date_str, fmt)
+                            break
+                        except ValueError:
+                            continue
                     
                     if parsed_date:
                         # Compare with current date
