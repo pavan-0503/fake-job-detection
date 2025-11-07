@@ -41,11 +41,33 @@ class FakeJobPredictor:
         self.feature_info = joblib.load(os.path.join(model_dir, 'feature_info.joblib'))
         
         # Load DistilBERT tokenizer and model
+        print("Loading DistilBERT tokenizer...")
         self.tokenizer = DistilBertTokenizer.from_pretrained(
             os.path.join(model_dir, 'tokenizer')
         )
-        self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased').to(self.device)
-        self.bert_model.eval()
+        
+        # Try to load DistilBERT model locally first, then from HuggingFace
+        print("Loading DistilBERT model...")
+        bert_local_path = os.path.join(model_dir, 'distilbert')
+        
+        try:
+            if os.path.exists(bert_local_path):
+                print(f"  → Loading from local cache: {bert_local_path}")
+                self.bert_model = DistilBertModel.from_pretrained(bert_local_path, local_files_only=True).to(self.device)
+            else:
+                print("  → Downloading from HuggingFace (this may take a while)...")
+                self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased').to(self.device)
+                # Save for next time
+                print(f"  → Saving model to {bert_local_path} for future use...")
+                os.makedirs(bert_local_path, exist_ok=True)
+                self.bert_model.save_pretrained(bert_local_path)
+            
+            self.bert_model.eval()
+            print("✅ DistilBERT loaded successfully")
+        except Exception as e:
+            print(f"⚠️  Warning: Could not load DistilBERT model: {e}")
+            print("  → Predictions will work but without BERT semantic validation")
+            self.bert_model = None
     
     def clean_text(self, text):
         """Clean and preprocess text"""
@@ -71,6 +93,10 @@ class FakeJobPredictor:
     def get_bert_embedding(self, text, max_length=512):
         """Generate BERT embedding for text"""
         if len(text) == 0:
+            return np.zeros(768)
+        
+        # If BERT model not available, return zero embedding
+        if self.bert_model is None:
             return np.zeros(768)
         
         # Tokenize
@@ -190,6 +216,18 @@ class FakeJobPredictor:
         edu_count = sum(1 for indicator in edu_portal_indicators if indicator in text_lower)
         if edu_count >= 2:
             return False, "This appears to be a university/college portal or academic system, not a job posting."
+        
+        # If BERT model is not available, skip semantic validation
+        if self.bert_model is None:
+            print("  ⚠️  BERT model not available, skipping semantic validation")
+            # Just do basic keyword checks
+            job_keywords = ['job', 'position', 'role', 'hire', 'hiring', 'vacancy', 'opening', 
+                           'salary', 'experience', 'skills', 'responsibilities', 'qualifications',
+                           'apply', 'candidate', 'required', 'employer', 'employment']
+            keyword_count = sum(1 for kw in job_keywords if kw in text_lower)
+            if keyword_count < 3:
+                return False, "Text doesn't appear to be job-related (insufficient job-related keywords)"
+            return True, None
         
         input_embedding = self.get_bert_embedding(cleaned_text)
         
