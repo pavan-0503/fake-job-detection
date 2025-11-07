@@ -50,7 +50,7 @@ def download_file_from_google_drive(file_id, destination):
     print(f"✅ Download complete! ({downloaded / (1024*1024):.2f} MB)")
 
 def extract_models(zip_path, extract_to='.'):
-    """Extract models zip file, handling nested folder structure"""
+    """Extract models zip file, handling different folder structures"""
     print("Extracting models...")
     
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
@@ -58,26 +58,47 @@ def extract_models(zip_path, extract_to='.'):
         file_list = zip_ref.namelist()
         print(f"📋 Found {len(file_list)} files in zip")
         
-        # Check if files are nested in a 'models/models/' structure
-        # This happens when you zip the models folder itself
-        if any('models/models/' in f for f in file_list):
-            print("🔄 Detected nested models folder, adjusting extraction...")
+        # Ensure models directory exists
+        models_dir = os.path.join(extract_to, 'models')
+        os.makedirs(models_dir, exist_ok=True)
+        
+        # Check the structure of files in the zip
+        has_models_prefix = any(f.startswith('models/') for f in file_list)
+        has_nested_models = any('models/models/' in f for f in file_list)
+        
+        if has_nested_models:
+            # Case 1: models/models/ structure (zipped models folder itself)
+            print("🔄 Detected nested models/models/ structure, fixing...")
             for file in file_list:
                 if file.startswith('models/models/'):
-                    # Extract to correct path (remove one 'models/' level)
                     new_path = file.replace('models/models/', 'models/', 1)
-                    
-                    # Create directories if needed
                     target_path = os.path.join(extract_to, new_path)
                     os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                    
-                    # Extract file
-                    if not file.endswith('/'):  # Skip directories
+                    if not file.endswith('/'):
                         with zip_ref.open(file) as source, open(target_path, 'wb') as target:
                             target.write(source.read())
-        else:
-            # Normal extraction
+        
+        elif has_models_prefix:
+            # Case 2: models/ structure (correct structure)
+            print("✅ Correct models/ structure detected")
             zip_ref.extractall(extract_to)
+        
+        else:
+            # Case 3: Files directly in zip (no models/ prefix)
+            # Need to extract into models/ directory
+            print("🔄 Files are in root of zip, extracting to models/ directory...")
+            for file in file_list:
+                if not file.endswith('/') and not file.startswith('__MACOSX'):
+                    # Extract each file into the models directory
+                    target_path = os.path.join(models_dir, file)
+                    
+                    # Handle subdirectories (like tokenizer/)
+                    if '/' in file:
+                        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    
+                    with zip_ref.open(file) as source, open(target_path, 'wb') as target:
+                        target.write(source.read())
+                    print(f"   ✓ Extracted: {file} → models/{file}")
     
     print("✅ Extraction complete!")
     
