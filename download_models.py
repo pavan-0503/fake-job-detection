@@ -10,39 +10,53 @@ from tqdm import tqdm
 
 def download_file_from_google_drive(file_id, destination):
     """Download large file from Google Drive with progress bar"""
-    # Use direct download URL that works better for large files
-    URL = f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
     
     session = requests.Session()
     
     print(f"🔄 Attempting to download from Google Drive (ID: {file_id[:10]}...)")
     
-    # Initial request with longer timeout
-    response = session.get(URL, stream=True, timeout=120)
+    # For large files, Google Drive requires confirmation
+    # Try multiple download methods
     
-    # Check if download was successful
-    if response.status_code != 200:
-        raise Exception(f"Failed to download file. Status code: {response.status_code}")
+    # Method 1: Direct download with confirmation
+    URL = f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
     
-    # Check content type
-    content_type = response.headers.get('content-type', '')
-    if 'text/html' in content_type:
-        raise Exception("Received HTML instead of file. File may not be publicly accessible.")
-    
-    # Save file with progress bar
-    total_size = int(response.headers.get('content-length', 0))
-    block_size = 1024 * 1024  # 1 MB
-    
-    if total_size > 0:
-        print(f"📦 Downloading models ({total_size / (1024*1024):.2f} MB)...")
-    else:
-        print(f"📦 Downloading models (size unknown)...")
-    
-    with open(destination, 'wb') as f:
-        downloaded = 0
-        with tqdm(total=total_size, unit='B', unit_scale=True, disable=total_size==0) as pbar:
-            for chunk in response.iter_content(block_size):
-                if chunk:
+    try:
+        response = session.get(URL, stream=True, timeout=180)
+        
+        # Check content type BEFORE checking status
+        content_type = response.headers.get('content-type', '')
+        
+        # For large files, Google might return HTML with a download warning
+        # Check if we got HTML or actual file
+        if 'text/html' in content_type and response.status_code == 200:
+            print("   → Handling Google Drive virus scan warning for large file...")
+            
+            # Try alternative download URL
+            URL2 = f"https://drive.google.com/u/0/uc?id={file_id}&export=download&confirm=t"
+            response = session.get(URL2, stream=True, timeout=180)
+            content_type = response.headers.get('content-type', '')
+            
+            if 'text/html' in content_type:
+                raise Exception("File not publicly accessible. Please set sharing to 'Anyone with the link'")
+        
+        if response.status_code != 200:
+            raise Exception(f"Failed to download. Status code: {response.status_code}")
+        
+        # Save file with progress bar
+        total_size = int(response.headers.get('content-length', 0))
+        block_size = 1024 * 1024  # 1 MB
+        
+        if total_size > 0:
+            print(f"📦 Downloading models ({total_size / (1024*1024):.2f} MB)...")
+        else:
+            print(f"📦 Downloading models (size unknown, this may take a while)...")
+        
+        with open(destination, 'wb') as f:
+            downloaded = 0
+            with tqdm(total=total_size, unit='B', unit_scale=True, disable=total_size==0) as pbar:
+                for chunk in response.iter_content(block_size):
+                    if chunk:
                     f.write(chunk)
                     downloaded += len(chunk)
                     pbar.update(len(chunk))
