@@ -10,33 +10,44 @@ from tqdm import tqdm
 
 def download_file_from_google_drive(file_id, destination):
     """Download large file from Google Drive with progress bar"""
-    URL = "https://drive.google.com/uc?export=download"
+    # Use direct download URL that works better for large files
+    URL = f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
     
     session = requests.Session()
     
-    # Initial request
-    response = session.get(URL, params={'id': file_id, 'confirm': 1}, stream=True)
+    print(f"🔄 Attempting to download from Google Drive (ID: {file_id[:10]}...)")
     
-    # Handle virus scan warning for large files
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            params = {'id': file_id, 'confirm': value}
-            response = session.get(URL, params=params, stream=True)
+    # Initial request with longer timeout
+    response = session.get(URL, stream=True, timeout=120)
+    
+    # Check if download was successful
+    if response.status_code != 200:
+        raise Exception(f"Failed to download file. Status code: {response.status_code}")
+    
+    # Check content type
+    content_type = response.headers.get('content-type', '')
+    if 'text/html' in content_type:
+        raise Exception("Received HTML instead of file. File may not be publicly accessible.")
     
     # Save file with progress bar
     total_size = int(response.headers.get('content-length', 0))
     block_size = 1024 * 1024  # 1 MB
     
-    print(f"Downloading models ({total_size / (1024*1024):.2f} MB)...")
+    if total_size > 0:
+        print(f"📦 Downloading models ({total_size / (1024*1024):.2f} MB)...")
+    else:
+        print(f"📦 Downloading models (size unknown)...")
     
     with open(destination, 'wb') as f:
-        with tqdm(total=total_size, unit='B', unit_scale=True) as pbar:
+        downloaded = 0
+        with tqdm(total=total_size, unit='B', unit_scale=True, disable=total_size==0) as pbar:
             for chunk in response.iter_content(block_size):
                 if chunk:
                     f.write(chunk)
+                    downloaded += len(chunk)
                     pbar.update(len(chunk))
     
-    print("Download complete!")
+    print(f"✅ Download complete! ({downloaded / (1024*1024):.2f} MB)")
 
 def extract_models(zip_path, extract_to='.'):
     """Extract models zip file"""
@@ -69,11 +80,11 @@ def ensure_models_exist(google_drive_file_id=None):
     models_exist = all(os.path.exists(f) for f in required_files)
     
     if models_exist:
-        print("✓ Models already exist locally")
+        print("✅ Models already exist locally")
         return True
     
     # Models don't exist, need to download
-    print("⚠ Models not found locally")
+    print("⚠️  Models not found locally. Attempting download...")
     
     if not google_drive_file_id:
         # Try to get from environment variable
@@ -81,23 +92,51 @@ def ensure_models_exist(google_drive_file_id=None):
     
     if not google_drive_file_id:
         print("❌ ERROR: Google Drive file ID not provided!")
-        print("   Set GOOGLE_DRIVE_MODEL_ID environment variable")
-        print("   or pass file_id to ensure_models_exist()")
+        print("   📋 Set GOOGLE_DRIVE_MODEL_ID environment variable in Railway")
+        print("   📋 Format: Go to Railway → Variables → Add:")
+        print("      Variable: GOOGLE_DRIVE_MODEL_ID")
+        print("      Value: 16cFNpCAVWqM_qZDuZYbFi_iEmWjkyjin")
         return False
     
     try:
+        # Create models directory if it doesn't exist
+        os.makedirs(models_dir, exist_ok=True)
+        
         # Download models.zip
         zip_path = 'models.zip'
+        print(f"📥 Downloading from Google Drive (File ID: {google_drive_file_id})...")
         download_file_from_google_drive(google_drive_file_id, zip_path)
+        
+        # Verify zip file was downloaded
+        if not os.path.exists(zip_path):
+            raise Exception("Zip file was not created after download")
+        
+        file_size = os.path.getsize(zip_path)
+        if file_size < 1000:  # Less than 1KB suggests error page
+            with open(zip_path, 'r') as f:
+                content = f.read()[:500]
+            raise Exception(f"Downloaded file too small ({file_size} bytes). May be error page: {content}")
+        
+        print(f"✅ Downloaded {file_size / (1024*1024):.2f} MB")
         
         # Extract models
         extract_models(zip_path, extract_to='.')
         
-        print("✓ Models downloaded and extracted successfully!")
+        # Verify models exist after extraction
+        models_exist_after = all(os.path.exists(f) for f in required_files)
+        if not models_exist_after:
+            missing = [f for f in required_files if not os.path.exists(f)]
+            raise Exception(f"Models extracted but missing files: {missing}")
+        
+        print("✅ Models downloaded and extracted successfully!")
         return True
         
     except Exception as e:
         print(f"❌ Error downloading models: {e}")
+        print(f"   🔍 Check that:")
+        print(f"      1. Google Drive file ID is correct: {google_drive_file_id}")
+        print(f"      2. File sharing is set to 'Anyone with the link'")
+        print(f"      3. Railway has internet access (should be fine)")
         return False
 
 if __name__ == "__main__":
