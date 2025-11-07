@@ -102,9 +102,10 @@ def extract_models(zip_path, extract_to='.'):
     
     print("✅ Extraction complete!")
     
-    # Clean up zip file
-    os.remove(zip_path)
-    print("🗑️  Cleaned up zip file")
+    # Clean up zip file (check if exists first to avoid race condition with multiple workers)
+    if os.path.exists(zip_path):
+        os.remove(zip_path)
+        print("🗑️  Cleaned up zip file")
 
 def ensure_models_exist(google_drive_file_id=None):
     """
@@ -129,6 +130,26 @@ def ensure_models_exist(google_drive_file_id=None):
         print("✅ Models already exist locally")
         return True
     
+    # Check if another worker is downloading (lock file mechanism)
+    lock_file = 'models_download.lock'
+    if os.path.exists(lock_file):
+        print("⏳ Another worker is downloading models, waiting...")
+        # Wait up to 60 seconds for the other worker to finish
+        import time
+        for i in range(60):
+            time.sleep(1)
+            if all(os.path.exists(f) for f in required_files):
+                print("✅ Models downloaded by another worker!")
+                return True
+        print("⚠️  Timeout waiting for other worker, attempting download anyway...")
+    
+    # Create lock file to prevent other workers from downloading simultaneously
+    try:
+        with open(lock_file, 'w') as f:
+            f.write('downloading')
+    except:
+        pass  # If we can't create lock, continue anyway
+    
     # Models don't exist, need to download
     print("⚠️  Models not found locally. Attempting download...")
     
@@ -142,6 +163,9 @@ def ensure_models_exist(google_drive_file_id=None):
         print("   📋 Format: Go to Railway → Variables → Add:")
         print("      Variable: GOOGLE_DRIVE_MODEL_ID")
         print("      Value: 16cFNpCAVWqM_qZDuZYbFi_iEmWjkyjin")
+        # Clean up lock file
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
         return False
     
     try:
@@ -198,6 +222,11 @@ def ensure_models_exist(google_drive_file_id=None):
             raise Exception(f"Models extracted but missing required files: {missing}")
         
         print("✅ Models downloaded and extracted successfully!")
+        
+        # Clean up lock file
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+        
         return True
         
     except Exception as e:
@@ -206,6 +235,11 @@ def ensure_models_exist(google_drive_file_id=None):
         print(f"      1. Google Drive file ID is correct: {google_drive_file_id}")
         print(f"      2. File sharing is set to 'Anyone with the link'")
         print(f"      3. Railway has internet access (should be fine)")
+        
+        # Clean up lock file on error
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+        
         return False
 
 if __name__ == "__main__":
