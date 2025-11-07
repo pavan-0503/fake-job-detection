@@ -40,43 +40,59 @@ class FakeJobPredictor:
         # Load feature info
         self.feature_info = joblib.load(os.path.join(model_dir, 'feature_info.joblib'))
         
-        # Check environment variable to disable BERT (for low-memory environments like Railway free tier)
-        use_bert = os.getenv('USE_BERT', 'false').lower() == 'true'
+        # Check environment variable to enable/disable BERT
+        # Default is TRUE now that we include DistilBERT in the models.zip
+        use_bert = os.getenv('USE_BERT', 'true').lower() == 'true'
         
         if not use_bert:
-            print("⚠️  BERT disabled (USE_BERT=false). Using keyword-based validation.")
+            print("⚠️  BERT disabled (USE_BERT=false). Using zero embeddings.")
+            print("   ⚠️  WARNING: Predictions will be LESS ACCURATE without BERT!")
             print("   To enable BERT, set environment variable: USE_BERT=true")
             self.tokenizer = None
             self.bert_model = None
             return
         
-        # Load DistilBERT tokenizer and model (only if enabled)
-        print("Loading DistilBERT tokenizer...")
-        self.tokenizer = DistilBertTokenizer.from_pretrained(
-            os.path.join(model_dir, 'tokenizer')
-        )
+        # Load DistilBERT tokenizer and model
+        print("📚 Loading DistilBERT tokenizer...")
+        try:
+            self.tokenizer = DistilBertTokenizer.from_pretrained(
+                os.path.join(model_dir, 'tokenizer')
+            )
+            print("   ✅ Tokenizer loaded")
+        except Exception as e:
+            print(f"   ❌ Failed to load tokenizer: {e}")
+            self.tokenizer = None
+            self.bert_model = None
+            return
         
-        # Try to load DistilBERT model locally first, then from HuggingFace
-        print("Loading DistilBERT model...")
+        # Try to load DistilBERT model from local cache
+        print("🧠 Loading DistilBERT model...")
         bert_local_path = os.path.join(model_dir, 'distilbert')
         
         try:
             if os.path.exists(bert_local_path):
-                print(f"  → Loading from local cache: {bert_local_path}")
-                self.bert_model = DistilBertModel.from_pretrained(bert_local_path, local_files_only=True).to(self.device)
+                print(f"   → Loading from local cache: {bert_local_path}")
+                self.bert_model = DistilBertModel.from_pretrained(
+                    bert_local_path, 
+                    local_files_only=True
+                ).to(self.device)
+                print("   ✅ DistilBERT loaded successfully from local cache!")
             else:
-                print("  → Downloading from HuggingFace (this may take a while)...")
+                print("   ⚠️  Local model not found, downloading from HuggingFace...")
+                print("   (This may take a while and could cause OOM on Railway free tier)")
                 self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased').to(self.device)
                 # Save for next time
-                print(f"  → Saving model to {bert_local_path} for future use...")
+                print(f"   → Saving model to {bert_local_path} for future use...")
                 os.makedirs(bert_local_path, exist_ok=True)
                 self.bert_model.save_pretrained(bert_local_path)
+                print("   ✅ Model saved for future use")
             
             self.bert_model.eval()
-            print("✅ DistilBERT loaded successfully")
+            print("✅ DistilBERT ready for predictions!")
+            
         except Exception as e:
-            print(f"⚠️  Warning: Could not load DistilBERT model: {e}")
-            print("  → Predictions will work but without BERT semantic validation")
+            print(f"❌ Error loading DistilBERT model: {e}")
+            print("   → Predictions will use zero embeddings (LESS ACCURATE)")
             self.bert_model = None
     
     def clean_text(self, text):
