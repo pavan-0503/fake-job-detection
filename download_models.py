@@ -50,15 +50,40 @@ def download_file_from_google_drive(file_id, destination):
     print(f"✅ Download complete! ({downloaded / (1024*1024):.2f} MB)")
 
 def extract_models(zip_path, extract_to='.'):
-    """Extract models zip file"""
+    """Extract models zip file, handling nested folder structure"""
     print("Extracting models...")
+    
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_to)
-    print("Extraction complete!")
+        # List all files in the zip
+        file_list = zip_ref.namelist()
+        print(f"📋 Found {len(file_list)} files in zip")
+        
+        # Check if files are nested in a 'models/models/' structure
+        # This happens when you zip the models folder itself
+        if any('models/models/' in f for f in file_list):
+            print("🔄 Detected nested models folder, adjusting extraction...")
+            for file in file_list:
+                if file.startswith('models/models/'):
+                    # Extract to correct path (remove one 'models/' level)
+                    new_path = file.replace('models/models/', 'models/', 1)
+                    
+                    # Create directories if needed
+                    target_path = os.path.join(extract_to, new_path)
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    
+                    # Extract file
+                    if not file.endswith('/'):  # Skip directories
+                        with zip_ref.open(file) as source, open(target_path, 'wb') as target:
+                            target.write(source.read())
+        else:
+            # Normal extraction
+            zip_ref.extractall(extract_to)
+    
+    print("✅ Extraction complete!")
     
     # Clean up zip file
     os.remove(zip_path)
-    print("Cleaned up zip file")
+    print("🗑️  Cleaned up zip file")
 
 def ensure_models_exist(google_drive_file_id=None):
     """
@@ -119,6 +144,19 @@ def ensure_models_exist(google_drive_file_id=None):
         
         print(f"✅ Downloaded {file_size / (1024*1024):.2f} MB")
         
+        # Check zip file contents before extraction
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_contents = zip_ref.namelist()
+                print(f"📦 Zip contains {len(zip_contents)} files/folders")
+                # Show first few entries
+                for item in zip_contents[:5]:
+                    print(f"   - {item}")
+                if len(zip_contents) > 5:
+                    print(f"   ... and {len(zip_contents) - 5} more")
+        except zipfile.BadZipFile:
+            raise Exception("Downloaded file is not a valid ZIP file")
+        
         # Extract models
         extract_models(zip_path, extract_to='.')
         
@@ -126,7 +164,17 @@ def ensure_models_exist(google_drive_file_id=None):
         models_exist_after = all(os.path.exists(f) for f in required_files)
         if not models_exist_after:
             missing = [f for f in required_files if not os.path.exists(f)]
-            raise Exception(f"Models extracted but missing files: {missing}")
+            # List what was actually created
+            print("📂 Checking extracted files:")
+            if os.path.exists(models_dir):
+                for root, dirs, files in os.walk(models_dir):
+                    level = root.replace(models_dir, '').count(os.sep)
+                    indent = ' ' * 2 * level
+                    print(f"{indent}{os.path.basename(root)}/")
+                    subindent = ' ' * 2 * (level + 1)
+                    for file in files[:10]:  # Limit to first 10 files
+                        print(f"{subindent}{file}")
+            raise Exception(f"Models extracted but missing required files: {missing}")
         
         print("✅ Models downloaded and extracted successfully!")
         return True
