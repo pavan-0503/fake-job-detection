@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detectify - Protect Yourself from Fake Jobs</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/Screenshot 2025-11-05 214619.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #ffffff;
+            --primary-dark: #e5e5e5;
+            --secondary: #d1d5db;
+            --accent: #9ca3af;
+            --dark: #0a0a0a;
+            --dark-light: #1a1a1a;
+            --dark-card: #141414;
+            --gray: #6b7280;
+            --light-gray: #f3f4f6;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            background: var(--dark);
+        }
+
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(10, 10, 10, 0.98);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1.2rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: white;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            object-fit: cover;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2.5rem;
+            align-items: center;
+            list-style: none;
+        }
+
+        .nav-links a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover {
+            color: white;
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.75rem;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.95rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ffffff, #e5e5e5);
+            color: #000000;
+            font-weight: 700;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            background: linear-gradient(to bottom, #0a0a0a 0%, #1a1a1a 100%);
+            position: relative;
+            padding: 8rem 2rem 4rem;
+        }
+
+        .hero-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4rem;
+            align-items: center;
+        }
+
+        .hero-content {
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 0.5rem 1.25rem;
+            border-radius: 20px;
+            color: #ffffff;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-title {
+            font-size: 3.75rem;
+            font-weight: 800;
+            color: white;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1.15rem;
+            color: rgba(255, 255, 255, 0.7);
+            line-height: 1.7;
+            margin-bottom: 2.5rem;
+            max-width: 90%;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn-large {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+        }
+
+        /* Hero Cards */
+        .hero-cards {
+            position: relative;
+            height: 550px;
+        }
+
+        .card-container {
+            position: relative;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 2rem;
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateX(-5px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .card-main {
+            flex: 1;
+        }
+
+        .card-secondary {
+            flex: 0.8;
+        }
+
+        .card-icon {
+            width: 55px;
+            height: 55px;
+            background: linear-gradient(135deg, #ffffff, #d1d5db);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            margin-bottom: 1.25rem;
+            color: #000000;
+        }
+
+        .card-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 0.75rem;
+        }
+
+        .card-description {
+            color: rgba(255, 255, 255, 0.65);
+            line-height: 1.6;
+            margin-bottom: 1.25rem;
+            font-size: 0.95rem;
+        }
+
+        .card-features {
+            list-style: none;
+        }
+
+        .card-features li {
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 0.65rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 0.9rem;
+        }
+
+        .card-features li i {
+            color: #ffffff;
+            font-size: 0.85rem;
+        }
+
+        /* Stats Section */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 2rem;
+            margin-top: 4rem;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 1.5rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: transform 0.3s, border-color 0.3s;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-3px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .stat-number {
+            font-size: 2.25rem;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+
+        .stat-label {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.9rem;
+        }
+
+        /* Trusted By Section */
+        .trusted {
+            background: rgba(255, 255, 255, 0.02);
+            padding: 2.5rem 2rem;
+            margin-top: 3rem;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .trusted h3 {
+            text-align: center;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 2rem;
+        }
+
+        .trusted-logos {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 3rem;
+        }
+
+        .trusted-logos div {
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 600;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .hero-container {
+                grid-template-columns: 1fr;
+                gap: 3rem;
+            }
+
+            .hero-cards {
+                display: none;
+            }
+
+            .hero-title {
+                font-size: 3rem;
+            }
+
+            .stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                padding: 6rem 1rem 2rem;
+            }
+
+            .hero-title {
+                font-size: 2.5rem;
+            }
+
+            .hero-subtitle {
+                font-size: 1rem;
+            }
+
+            .hero-cta {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .btn-large {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav>
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <div class="logo-icon">
+                    <img src="{{ url_for('static', filename='images/Screenshot 2025-11-05 214619.png') }}" alt="Detectify Logo" style="width: 50px; height: 50px; border-radius: 12px;">
+                </div>
+                <span>Detectify</span>
+            </a>
+
+            <div class="nav-buttons">
+                <a href="/analyze" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Analyze Job
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero" id="home">
+        <div class="hero-container">
+            <!-- Hero Content -->
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <i class="fas fa-shield-check"></i>
+                    AI-Powered Protection
+                </div>
+
+                <h1 class="hero-title">
+                    Protect Yourself<br>
+                    From Fake Jobs
+                </h1>
+
+                <p class="hero-subtitle">
+                    Advanced AI technology using DistilBERT and Machine Learning 
+                    to detect fraudulent job postings in seconds. Stay safe in your 
+                    job search journey.
+                </p>
+
+                <div class="hero-cta">
+                    <a href="/analyze" class="btn btn-primary btn-large">
+                        <i class="fas fa-search"></i>
+                        Start Analyzing Now
+                    </a>
+                </div>
+            </div>
+
+            <!-- Hero Cards -->
+            <div class="hero-cards">
+                <div class="card-container">
+                    <!-- Main Card -->
+                    <div class="feature-card card-main">
+                        <div class="card-icon">
+                            <i class="fas fa-brain"></i>
+                        </div>
+                        <h3 class="card-title">AI-Powered Detection</h3>
+                        <p class="card-description">
+                            Our advanced ML model analyzes job postings using DistilBERT embeddings 
+                            and RandomForest classification.
+                        </p>
+                        <ul class="card-features">
+                            <li><i class="fas fa-check-circle"></i> 97%+ Accuracy</li>
+                            <li><i class="fas fa-check-circle"></i> Real-time Analysis</li>
+                            <li><i class="fas fa-check-circle"></i> Instant Results</li>
+                        </ul>
+                    </div>
+
+                    <!-- Secondary Card -->
+                    <div class="feature-card card-secondary">
+                        <div class="card-icon">
+                            <i class="fas fa-link"></i>
+                        </div>
+                        <h3 class="card-title">URL Support</h3>
+                        <p class="card-description">
+                            Paste job posting URLs from LinkedIn, Naukri, Indeed, and more.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="stats">
+            <div class="stat-item">
+                <span class="stat-number">27K+</span>
+                <span class="stat-label">Jobs Analyzed</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">97%</span>
+                <span class="stat-label">Accuracy Rate</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">10K+</span>
+                <span class="stat-label">Scams Detected</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-number">2s</span>
+                <span class="stat-label">Avg Response Time</span>
+            </div>
+        </div>
+
+        <!-- Trusted By -->
+        <div class="trusted">
+            <h3>Powered By Advanced AI Technology</h3>
+            <div class="trusted-logos">
+                <div>
+                    <i class="fas fa-robot"></i> DistilBERT
+                </div>
+                <div>
+                    <i class="fas fa-tree"></i> RandomForest
+                </div>
+                <div>
+                    <i class="fab fa-python"></i> PyTorch
+                </div>
+                <div>
+                    <i class="fas fa-flask"></i> Flask
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script>
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>

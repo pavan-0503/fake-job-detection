@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detectify - Fake Job Detection</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/Screenshot 2025-11-05 214619.png') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0a;
+            min-height: 100vh;
+            color: #ffffff;
+        }
+
+        /* Header */
+        .header {
+            background: #141414;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 1rem 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Header actions */
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .home-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 0.95rem;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            transition: all 0.2s ease;
+        }
+
+        .home-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-1px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            border-radius: 10px;
+            object-fit: cover;
+        }
+
+        .logo-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .logo-text p {
+            font-size: 0.8rem;
+            color: #9ca3af;
+            font-weight: 400;
+        }
+
+        .badge {
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        /* Main Container */
+        .container {
+            max-width: 900px;
+            margin: 3rem auto;
+            padding: 0 2rem;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .hero h2 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: #ffffff;
+            line-height: 1.2;
+        }
+
+        .hero p {
+            font-size: 1.125rem;
+            color: #9ca3af;
+            max-width: 600px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        /* Main Card */
+        .card {
+            background: #141414;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3), 0 2px 4px -1px rgba(0,0,0,0.2);
+            padding: 2.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Input Section */
+        .input-label {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 0.75rem;
+        }
+
+        .input-label i {
+            color: #ffffff;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 200px;
+            padding: 1rem;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            font-size: 0.95rem;
+            font-family: inherit;
+            resize: vertical;
+            transition: all 0.3s;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
+        textarea::placeholder {
+            color: #6b7280;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #ffffff;
+            background: #1a1a1a;
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+        }
+
+        textarea::placeholder {
+            color: #6b7280;
+        }
+
+        .hint {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #9ca3af;
+            font-size: 0.875rem;
+            margin-top: 0.75rem;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            border-left: 3px solid #ffffff;
+        }
+
+        .hint i {
+            color: #ffffff;
+        }
+
+        /* Button */
+        .button-section {
+            margin-top: 1.5rem;
+        }
+
+        .analyze-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #ffffff 0%, #d1d5db 100%);
+            color: #000000;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 700;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+
+        .analyze-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .analyze-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .analyze-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Loading */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-top: 4px solid #ffffff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #9ca3af;
+            font-weight: 500;
+        }
+
+        /* Result Section */
+        .result-card {
+            display: none;
+            margin-top: 2rem;
+            border-radius: 16px;
+            padding: 2rem;
+            animation: slideIn 0.4s ease-out;
+        }
+
+        .result-card.active {
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-card.legit {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .result-card.fake {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .result-card.closed {
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            color: white;
+            border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+
+        .result-card.invalid {
+            background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+            color: white;
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .result-icon {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+
+        .result-title h3 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .result-subtitle {
+            font-size: 0.95rem;
+            opacity: 0.9;
+        }
+
+        .confidence-section {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .confidence-label {
+            font-size: 0.875rem;
+            opacity: 0.9;
+            margin-bottom: 0.75rem;
+            font-weight: 500;
+        }
+
+        .confidence-bar {
+            background: rgba(255, 255, 255, 0.2);
+            height: 40px;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: white;
+            transition: width 1s ease-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: #1a1a1a;
+            font-size: 0.95rem;
+        }
+
+        .details-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .detail-item {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 1rem;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .detail-label {
+            font-size: 0.875rem;
+            opacity: 0.9;
+            margin-bottom: 0.5rem;
+        }
+
+        .detail-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
+        .error-message {
+            background: rgba(255, 255, 255, 0.15);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 1rem;
+            display: flex;
+            align-items: start;
+            gap: 0.75rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .error-message i {
+            margin-top: 0.25rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        .footer-links a {
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .footer-links a:hover {
+            text-decoration: underline;
+            color: #d1d5db;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero h2 {
+                font-size: 2rem;
+            }
+
+            .container {
+                padding: 0 1rem;
+                margin: 2rem auto;
+            }
+
+            .card {
+                padding: 1.5rem;
+            }
+
+            .details-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <a href="/" style="text-decoration: none;">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <img src="{{ url_for('static', filename='images/Screenshot 2025-11-05 214619.png') }}" alt="Detectify Logo">
+                    </div>
+                    <div class="logo-text">
+                        <h1>Detectify</h1>
+                        <p>AI-Powered Job Verification</p>
+                    </div>
+                </div>
+            </a>
+            <div class="nav-actions">
+                <a href="/" class="home-btn" title="Go to Home">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="hero">
+            <h2>Protect Yourself from Fake Jobs</h2>
+            <p>Our advanced AI analyzes job postings using DistilBERT and machine learning to detect fraudulent opportunities</p>
+        </div>
+
+        <!-- Input Card -->
+        <div class="card">
+            <div class="input-label">
+                <i class="fas fa-file-alt"></i>
+                <span>Job Description or URL</span>
+            </div>
+            
+            <textarea 
+                id="jobInput" 
+                placeholder="Paste a job description or job posting URL here...
+
+Examples:
+• Full job description with title, requirements, and company info
+• LinkedIn job posting URL
+• Naukri, Indeed, or any job portal link
+
+The AI will verify if it's a legitimate job opportunity."
+            ></textarea>
+            
+            <div class="hint">
+                <i class="fas fa-info-circle"></i>
+                <span>Supported: Job descriptions, LinkedIn, Naukri, Indeed, TimesJobs, and more</span>
+            </div>
+
+            <div class="button-section">
+                <button class="analyze-btn" onclick="analyzeJob()">
+                    <i class="fas fa-search"></i>
+                    <span>Analyze Job Posting</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p class="loading-text">Analyzing with AI...</p>
+        </div>
+
+        <!-- Result Card -->
+        <div class="result-card" id="resultCard">
+            <div class="result-header">
+                <div class="result-icon" id="resultIcon"></div>
+                <div class="result-title">
+                    <h3 id="resultTitle"></h3>
+                    <p class="result-subtitle" id="resultSubtitle"></p>
+                </div>
+            </div>
+
+            <div class="confidence-section" id="confidenceSection">
+                <div class="confidence-label">Confidence Level</div>
+                <div class="confidence-bar">
+                    <div class="confidence-fill" id="confidenceFill">
+                        <span id="confidenceText"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="details-grid" id="detailsGrid"></div>
+
+            <div class="error-message" id="errorMessage" style="display: none;">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="errorText"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Powered by DistilBERT & RandomForest ML • © 2025 Detectify</p>
+    </footer>
+
+    <script>
+        async function analyzeJob() {
+            const input = document.getElementById('jobInput').value.trim();
+            
+            if (!input) {
+                alert('⚠️ Please enter a job description or URL');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('resultCard').classList.remove('active');
+            document.querySelector('.analyze-btn').disabled = true;
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ input: input })
+                });
+
+                const data = await response.json();
+
+                // Hide loading
+                document.getElementById('loading').classList.remove('active');
+                document.querySelector('.analyze-btn').disabled = false;
+
+                if (data.error && data.is_job === false) {
+                    // Not a job description
+                    showResult('invalid', 'Not a Job Description', data.error, data);
+                } else if (data.is_expired === true) {
+                    // Job is closed/expired
+                    showResult('closed', 'Job Closed', data.reason || 'This job posting is no longer accepting applications', data);
+                } else if (data.error) {
+                    // Other error (including scraping failures)
+                    let errorMsg = data.error;
+                    if (data.suggestion) {
+                        errorMsg += '\n\n💡 ' + data.suggestion;
+                    }
+                    showResult('invalid', 'Unable to Analyze', errorMsg, data);
+                } else {
+                    // Valid result
+                    const type = data.prediction === 'Fake Job' ? 'fake' : 'legit';
+                    const subtitle = type === 'fake' 
+                        ? 'This job posting shows signs of fraud' 
+                        : 'This appears to be a legitimate job posting';
+                    showResult(type, data.prediction, subtitle, data);
+                }
+
+            } catch (error) {
+                document.getElementById('loading').classList.remove('active');
+                document.querySelector('.analyze-btn').disabled = false;
+                showResult('invalid', 'Connection Error', 'Failed to connect to server: ' + error.message, {});
+            }
+        }
+
+        function showResult(type, title, subtitle, data) {
+            const resultCard = document.getElementById('resultCard');
+            const resultIcon = document.getElementById('resultIcon');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultSubtitle = document.getElementById('resultSubtitle');
+            const confidenceFill = document.getElementById('confidenceFill');
+            const confidenceText = document.getElementById('confidenceText');
+            const detailsGrid = document.getElementById('detailsGrid');
+            const confidenceSection = document.getElementById('confidenceSection');
+            const errorMessage = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+
+            // Set card type
+            resultCard.className = 'result-card active ' + type;
+            
+            // Set icon
+            const icons = {
+                'fake': '<i class="fas fa-exclamation-triangle"></i>',
+                'legit': '<i class="fas fa-check-circle"></i>',
+                'closed': '<i class="fas fa-ban"></i>',
+                'invalid': '<i class="fas fa-info-circle"></i>'
+            };
+            resultIcon.innerHTML = icons[type];
+
+            // Set title and subtitle
+            resultTitle.textContent = title;
+            resultSubtitle.textContent = subtitle;
+
+            // Handle confidence and details
+            if (type === 'invalid' || type === 'closed') {
+                confidenceSection.style.display = 'none';
+                detailsGrid.innerHTML = '';
+                errorMessage.style.display = 'flex';
+                errorText.textContent = subtitle;
+            } else {
+                confidenceSection.style.display = 'block';
+                errorMessage.style.display = 'none';
+
+                // Set confidence bar
+                const confidence = Math.round((data.confidence || 0) * 100);
+                setTimeout(() => {
+                    confidenceFill.style.width = confidence + '%';
+                    confidenceText.textContent = confidence + '%';
+                }, 100);
+
+                // Set details
+                let detailsHTML = '';
+                
+                if (data.probability_legit !== undefined) {
+                    detailsHTML += `
+                        <div class="detail-item">
+                            <div class="detail-label"><i class="fas fa-check"></i> Legitimate</div>
+                            <div class="detail-value">${Math.round(data.probability_legit * 100)}%</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label"><i class="fas fa-times"></i> Fraudulent</div>
+                            <div class="detail-value">${Math.round(data.probability_fake * 100)}%</div>
+                        </div>
+                    `;
+                }
+
+                if (data.source) {
+                    detailsHTML += `
+                        <div class="detail-item">
+                            <div class="detail-label"><i class="fas fa-database"></i> Source</div>
+                            <div class="detail-value">${data.source}</div>
+                        </div>
+                    `;
+                }
+
+                if (data.scraped_info) {
+                    const info = data.scraped_info;
+                    // Only show company if it exists and is not empty/meaningless
+                    if (info.company && info.company.trim() && 
+                        info.company !== 'N/A' && 
+                        info.company !== 'null' && 
+                        info.company !== 'undefined' &&
+                        info.company.length > 2 &&
+                        !/^\d+$/.test(info.company)) {  // Not just numbers
+                        detailsHTML += `
+                            <div class="detail-item">
+                                <div class="detail-label"><i class="fas fa-building"></i> Company</div>
+                                <div class="detail-value">${info.company}</div>
+                            </div>
+                        `;
+                    }
+                    // Only show location if it exists and is not empty/meaningless
+                    if (info.location && info.location.trim() && 
+                        info.location !== 'N/A' && 
+                        info.location !== 'null' && 
+                        info.location !== 'undefined' &&
+                        info.location !== 'Clear text' &&
+                        info.location.length > 2 &&
+                        !/^\d+$/.test(info.location)) {  // Not just numbers
+                        detailsHTML += `
+                            <div class="detail-item">
+                                <div class="detail-label"><i class="fas fa-map-marker-alt"></i> Location</div>
+                                <div class="detail-value">${info.location}</div>
+                            </div>
+                        `;
+                    }
+                }
+
+                detailsGrid.innerHTML = detailsHTML;
+            }
+
+            // Scroll to result
+            resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        // Allow Ctrl+Enter to submit
+        document.getElementById('jobInput').addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                analyzeJob();
+            }
+        });
+    </script>
+</body>
+</html>
