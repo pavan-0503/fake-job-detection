@@ -12,6 +12,7 @@ from transformers import DistilBertTokenizer, DistilBertModel
 import os
 import warnings
 from datetime import datetime
+import dateparser
 warnings.filterwarnings('ignore')
 
 
@@ -40,60 +41,12 @@ class FakeJobPredictor:
         # Load feature info
         self.feature_info = joblib.load(os.path.join(model_dir, 'feature_info.joblib'))
         
-        # Check environment variable to enable/disable BERT
-        # Default is TRUE now that we include DistilBERT in the models.zip
-        use_bert = os.getenv('USE_BERT', 'true').lower() == 'true'
-        
-        if not use_bert:
-            print("⚠️  BERT disabled (USE_BERT=false). Using zero embeddings.")
-            print("   ⚠️  WARNING: Predictions will be LESS ACCURATE without BERT!")
-            print("   To enable BERT, set environment variable: USE_BERT=true")
-            self.tokenizer = None
-            self.bert_model = None
-            return
-        
         # Load DistilBERT tokenizer and model
-        print("📚 Loading DistilBERT tokenizer...")
-        try:
-            self.tokenizer = DistilBertTokenizer.from_pretrained(
-                os.path.join(model_dir, 'tokenizer')
-            )
-            print("   ✅ Tokenizer loaded")
-        except Exception as e:
-            print(f"   ❌ Failed to load tokenizer: {e}")
-            self.tokenizer = None
-            self.bert_model = None
-            return
-        
-        # Try to load DistilBERT model from local cache
-        print("🧠 Loading DistilBERT model...")
-        bert_local_path = os.path.join(model_dir, 'distilbert')
-        
-        try:
-            if os.path.exists(bert_local_path):
-                print(f"   → Loading from local cache: {bert_local_path}")
-                self.bert_model = DistilBertModel.from_pretrained(
-                    bert_local_path, 
-                    local_files_only=True
-                ).to(self.device)
-                print("   ✅ DistilBERT loaded successfully from local cache!")
-            else:
-                print("   ⚠️  Local model not found, downloading from HuggingFace...")
-                print("   (This may take a while and could cause OOM on Railway free tier)")
-                self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased').to(self.device)
-                # Save for next time
-                print(f"   → Saving model to {bert_local_path} for future use...")
-                os.makedirs(bert_local_path, exist_ok=True)
-                self.bert_model.save_pretrained(bert_local_path)
-                print("   ✅ Model saved for future use")
-            
-            self.bert_model.eval()
-            print("✅ DistilBERT ready for predictions!")
-            
-        except Exception as e:
-            print(f"❌ Error loading DistilBERT model: {e}")
-            print("   → Predictions will use zero embeddings (LESS ACCURATE)")
-            self.bert_model = None
+        self.tokenizer = DistilBertTokenizer.from_pretrained(
+            os.path.join(model_dir, 'tokenizer')
+        )
+        self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased').to(self.device)
+        self.bert_model.eval()
     
     def clean_text(self, text):
         """Clean and preprocess text"""
@@ -119,10 +72,6 @@ class FakeJobPredictor:
     def get_bert_embedding(self, text, max_length=512):
         """Generate BERT embedding for text"""
         if len(text) == 0:
-            return np.zeros(768)
-        
-        # If BERT model or tokenizer not available, return zero embedding
-        if self.bert_model is None or self.tokenizer is None:
             return np.zeros(768)
         
         # Tokenize
@@ -243,18 +192,6 @@ class FakeJobPredictor:
         if edu_count >= 2:
             return False, "This appears to be a university/college portal or academic system, not a job posting."
         
-        # If BERT model is not available, skip semantic validation
-        if self.bert_model is None:
-            print("  ⚠️  BERT model not available, skipping semantic validation")
-            # Just do basic keyword checks
-            job_keywords = ['job', 'position', 'role', 'hire', 'hiring', 'vacancy', 'opening', 
-                           'salary', 'experience', 'skills', 'responsibilities', 'qualifications',
-                           'apply', 'candidate', 'required', 'employer', 'employment']
-            keyword_count = sum(1 for kw in job_keywords if kw in text_lower)
-            if keyword_count < 3:
-                return False, "Text doesn't appear to be job-related (insufficient job-related keywords)"
-            return True, None
-        
         input_embedding = self.get_bert_embedding(cleaned_text)
         
         # Define reference job posting examples (these will be compared semantically)
@@ -299,15 +236,15 @@ class FakeJobPredictor:
         max_non_job_sim = max(non_job_similarities)
         
         # Decision based on semantic similarity
-        # If text is more similar to non-job content, reject it
-        # Increased margin from 0.05 to 0.10 for better separation
-        if max_non_job_sim > max_job_sim:
+        # If text is more similar to non-job content by a significant margin, reject it
+        # Allow a small margin (0.05) for close calls since scraped pages often contain navigation
+        if max_non_job_sim > max_job_sim + 0.05:
             return False, f"This doesn't appear to be a job description. The content is more similar to {self._get_content_type(max_non_job_sim, non_job_texts, input_embedding)} (similarity: {max_non_job_sim:.2f} vs job content: {max_job_sim:.2f})."
         
         # If similarity to job content is too low overall, reject
-        # Increased threshold from 0.3 to 0.5 for stricter validation
-        if max_job_sim < 0.5:
-            return False, f"This doesn't appear to be job-related content. Semantic similarity to job postings is too low ({max_job_sim:.2f}, need at least 0.50)."
+        # Threshold of 0.45 to allow real jobs with some navigation text
+        if max_job_sim < 0.45:
+            return False, f"This doesn't appear to be job-related content. Semantic similarity to job postings is too low ({max_job_sim:.2f}, need at least 0.45)."
         
         # All checks passed - looks like a job description
         return True, None
@@ -382,16 +319,9 @@ class FakeJobPredictor:
             for match in matches:
                 date_str = match.group(1).strip()
                 
-                # Try to parse the date using common formats
+                # Try to parse the date using dateparser
                 try:
-                    parsed_date = None
-                    # Try common date formats
-                    for fmt in ['%Y-%m-%d', '%d/%m/%Y', '%m/%d/%Y', '%B %d, %Y', '%d %B %Y']:
-                        try:
-                            parsed_date = datetime.strptime(date_str, fmt)
-                            break
-                        except ValueError:
-                            continue
+                    parsed_date = dateparser.parse(date_str, settings={'PREFER_DATES_FROM': 'past'})
                     
                     if parsed_date:
                         # Compare with current date

@@ -99,7 +99,7 @@ class JobScraper:
             domain = parsed.netloc.lower()
             
             # Check if it's a JavaScript-heavy site
-            js_sites = ['naukri', 'linkedin', 'indeed', 'glassdoor', 'monster', 'jobhai']
+            js_sites = ['naukri', 'linkedin', 'indeed', 'glassdoor', 'monster', 'jobhai', 'jobslink']
             needs_selenium = any(site in domain for site in js_sites)
             
             # Try Selenium first for known JS sites if available
@@ -190,18 +190,20 @@ class JobScraper:
                 }
             
             # LinkedIn-specific: Check if we landed on search results instead of job page
-            if 'linkedin.com' in url and ('jobs in' in page_title or 'hardware design engineer jobs' in page_title or 'sign in' in page_title):
-                # This is likely the search results page or login wall, not the actual job
-                driver.quit()
-                return {
-                    'title': '',
-                    'company': '',
-                    'description': '',
-                    'location': '',
-                    'full_text': '',
-                    'source': 'Selenium',
-                    'error': f"Invalid LinkedIn URL - landed on search results or login page instead of job posting. The job may not exist or the URL is incorrect."
-                }
+            # Don't reject just because "sign in" appears - LinkedIn always shows that
+            if 'linkedin.com' in url:
+                # Check if it's actually a search results page (not individual job)
+                if 'jobs in' in page_title or 'hardware design engineer jobs' in page_title:
+                    driver.quit()
+                    return {
+                        'title': '',
+                        'company': '',
+                        'description': '',
+                        'location': '',
+                        'full_text': '',
+                        'source': 'Selenium',
+                        'error': f"Invalid LinkedIn URL - landed on search results page. Please open a specific job posting."
+                    }
             
             # Get page source after JavaScript execution
             page_source = driver.page_source
@@ -217,14 +219,24 @@ class JobScraper:
             if title_elem:
                 title = self._clean_text(title_elem.get_text())
             
+            # LinkedIn-specific: Try to extract job description from specific div
+            description = ''
+            if 'linkedin.com' in url:
+                job_desc_div = soup.find('div', {'class': re.compile(r'description|job-details|show-more-less-html')})
+                if job_desc_div:
+                    description = self._clean_text(job_desc_div.get_text())
+                    print(f"Found LinkedIn job description: {len(description)} chars")
+            
             # Try structured data
             structured_data = self._extract_structured_data(soup)
             if structured_data and len(structured_data['full_text']) > 100:
                 driver.quit()
                 return structured_data
             
-            # Extract all content
+            # Extract all content (if description not found above)
             all_text_parts = []
+            if description:
+                all_text_parts.append(description)
             
             # Get headings
             for heading in soup.find_all(['h1', 'h2', 'h3', 'h4']):
@@ -250,7 +262,9 @@ class JobScraper:
                 if text and 20 < len(text) < 500:
                     all_text_parts.append(text)
             
-            description = ' '.join(all_text_parts)
+            # Combine description (if not already extracted from LinkedIn-specific div)
+            if not description:
+                description = ' '.join(all_text_parts)
             
             # Extract company and location
             company = self._extract_company(soup)

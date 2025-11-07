@@ -13,16 +13,6 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import warnings
 warnings.filterwarnings('ignore')
 
-# Import model downloader
-from download_models import ensure_models_exist
-
-# Download models if not present (for Railway deployment)
-print("🔍 Checking for models...")
-if not ensure_models_exist():
-    print("⚠️  WARNING: Failed to download models. App may not work correctly.")
-else:
-    print("✅ Models ready!")
-
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -35,7 +25,7 @@ def init_predictor():
     """Initialize predictor (lazy loading)"""
     global predictor
     if predictor is None:
-        if not os.path.exists('models/rf_model.joblib') and not os.path.exists('models/rf_model_calibrated.joblib'):
+        if not os.path.exists('models/rf_model.joblib'):
             return False
         predictor = FakeJobPredictor()
     return True
@@ -433,4 +423,4 @@ def stats():
 
 if __name__ == '__main__':
     # Run Flask app
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)
