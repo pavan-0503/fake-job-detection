@@ -40,7 +40,17 @@ class FakeJobPredictor:
         # Load feature info
         self.feature_info = joblib.load(os.path.join(model_dir, 'feature_info.joblib'))
         
-        # Load DistilBERT tokenizer and model
+        # Check environment variable to disable BERT (for low-memory environments like Railway free tier)
+        use_bert = os.getenv('USE_BERT', 'false').lower() == 'true'
+        
+        if not use_bert:
+            print("⚠️  BERT disabled (USE_BERT=false). Using keyword-based validation.")
+            print("   To enable BERT, set environment variable: USE_BERT=true")
+            self.tokenizer = None
+            self.bert_model = None
+            return
+        
+        # Load DistilBERT tokenizer and model (only if enabled)
         print("Loading DistilBERT tokenizer...")
         self.tokenizer = DistilBertTokenizer.from_pretrained(
             os.path.join(model_dir, 'tokenizer')
@@ -95,8 +105,8 @@ class FakeJobPredictor:
         if len(text) == 0:
             return np.zeros(768)
         
-        # If BERT model not available, return zero embedding
-        if self.bert_model is None:
+        # If BERT model or tokenizer not available, return zero embedding
+        if self.bert_model is None or self.tokenizer is None:
             return np.zeros(768)
         
         # Tokenize
