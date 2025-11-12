@@ -4,6 +4,7 @@ Provides REST API and web interface for fake job detection
 """
 
 from flask import Flask, request, jsonify, render_template
+import numpy as np
 from flask_cors import CORS
 from predictor import FakeJobPredictor
 from scraper import JobScraper
@@ -25,7 +26,10 @@ def init_predictor():
     """Initialize predictor (lazy loading)"""
     global predictor
     if predictor is None:
-        if not os.path.exists('models/rf_model.joblib'):
+        # Allow either calibrated or base model to satisfy availability
+        has_calibrated = os.path.exists('models/rf_model_calibrated.joblib')
+        has_base = os.path.exists('models/rf_model.joblib')
+        if not (has_calibrated or has_base):
             return False
         predictor = FakeJobPredictor()
     return True
@@ -176,7 +180,11 @@ def analyze():
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    model_loaded = os.path.exists('models/rf_model.joblib')
+    # Report healthy if either calibrated or base model exists
+    model_loaded = (
+        os.path.exists('models/rf_model_calibrated.joblib') or 
+        os.path.exists('models/rf_model.joblib')
+    )
     return jsonify({
         'status': 'healthy',
         'model_loaded': model_loaded
@@ -244,18 +252,31 @@ def predict():
                 }), 400
             
             # Use cleaned URL for scraping (removes tracking parameters)
-            print(f"📡 Scraping URL: {cleaned_url}")
+            # Console logging (avoid Unicode for Windows cp1252 safety)
+            print(f"Scraping URL: {cleaned_url}")
             if cleaned_url != user_input:
                 print(f"   (Cleaned from: {user_input})")
             
             scraped_data = scraper.scrape_url(cleaned_url)
             
             if scraped_data.get('error'):
-                return jsonify({
-                    'error': f"Failed to scrape URL: {scraped_data['error']}",
-                    'prediction': None,
-                    'confidence': 0
-                }), 400
+                error_msg = scraped_data['error']
+                # Provide helpful message for SSL/certificate errors
+                if 'SSL' in error_msg or 'CERTIFICATE' in error_msg or 'certificate' in error_msg.lower():
+                    return jsonify({
+                        'error': 'Unable to access this URL due to security restrictions. This can happen with some job sites that have strict security policies. Please copy the job description text from the page and paste it directly instead.',
+                        'prediction': None,
+                        'confidence': 0,
+                        'suggestion': 'Copy and paste the job description text directly for analysis.',
+                        'technical_details': error_msg
+                    }), 400
+                else:
+                    return jsonify({
+                        'error': f"Failed to scrape URL: {error_msg}",
+                        'prediction': None,
+                        'confidence': 0,
+                        'suggestion': 'Copy and paste the job description text directly for analysis.'
+                    }), 400
             
             # Use scraped text for prediction
             job_text = scraped_data['full_text']
@@ -263,8 +284,8 @@ def predict():
             source_type = scraped_data.get('source', '')
             
             # Debug: Show scraped text length and preview
-            print(f"✓ Scraped text length: {len(job_text)} characters")
-            print(f"✓ Preview: {job_text[:200]}...")
+            print(f"Scraped text length: {len(job_text)} characters")
+            print(f"Preview: {job_text[:200]}...")
             
             # Check if scraped content is too short - likely scraping failed
             if len(job_text.strip()) < 50:
@@ -293,7 +314,7 @@ def predict():
             scraped_info = None
         
         # Make prediction (pass source for reputation boost)
-        print(f"🔮 Making prediction...")
+        print("Making prediction...")
         result = predictor.predict(job_text, source=source_type)
         
         # Add source info
@@ -305,7 +326,7 @@ def predict():
         return jsonify(result), 200
     
     except Exception as e:
-        print(f"❌ Error: {str(e)}")
+        print(f"Error: {str(e)}")
         return jsonify({
             'error': f'Internal server error: {str(e)}',
             'prediction': None,
@@ -420,7 +441,99 @@ def stats():
             'stats': {}
         }), 500
 
+@app.route('/explain', methods=['POST'])
+def explain():
+    """Explain validation and (if applicable) classification with similarity metrics.
+    Request JSON: {"input": "text or url"}
+    Response JSON includes validation meta, semantic similarities, and classification if valid.
+    """
+    try:
+        if not init_predictor():
+            return jsonify({'error': 'Model not found. Train first.', 'explanation': None}), 503
+
+        data = request.get_json()
+        if not data or 'input' not in data:
+            return jsonify({'error': 'Missing "input" field', 'explanation': None}), 400
+
+        user_input = data['input'].strip()
+        if not user_input:
+            return jsonify({'error': 'Input cannot be empty', 'explanation': None}), 400
+
+        is_input_url = is_url(user_input)
+        job_text = user_input
+        source = 'text'
+        source_type = None
+        scraped_info = None
+
+        if is_input_url:
+            is_valid, error_msg, cleaned_url = is_valid_job_url(user_input)
+            if not is_valid:
+                return jsonify({'error': error_msg, 'explanation': None, 'input_type': 'url'}), 400
+            print(f"Explain: scraping URL {cleaned_url}")
+            scraped_data = scraper.scrape_url(cleaned_url)
+            if scraped_data.get('error'):
+                return jsonify({'error': f"Scrape failed: {scraped_data['error']}", 'explanation': None}), 400
+            job_text = scraped_data['full_text']
+            source = f"scraped ({scraped_data.get('source','')})"
+            source_type = scraped_data.get('source')
+            scraped_info = {
+                'title': scraped_data.get('title',''),
+                'company': scraped_data.get('company',''),
+                'location': scraped_data.get('location',''),
+                'source_site': scraped_data.get('source','')
+            }
+
+        # Run validation
+        is_valid, meta = predictor.is_job_description(job_text)
+
+        # Always compute semantic similarities for transparency
+        cleaned = predictor.clean_text(job_text)
+        embedding = predictor.get_bert_embedding(cleaned)
+
+        job_sims = []
+        for ref in predictor.job_ref_embeddings:
+            sim = float(np.dot(embedding, ref) / (np.linalg.norm(embedding) * np.linalg.norm(ref))) if np.linalg.norm(embedding) and np.linalg.norm(ref) else 0.0
+            job_sims.append(sim)
+        non_job_sims = []
+        for ref in predictor.non_job_ref_embeddings:
+            sim = float(np.dot(embedding, ref) / (np.linalg.norm(embedding) * np.linalg.norm(ref))) if np.linalg.norm(embedding) and np.linalg.norm(ref) else 0.0
+            non_job_sims.append(sim)
+
+        max_job = max(job_sims) if job_sims else 0.0
+        max_non_job = max(non_job_sims) if non_job_sims else 0.0
+        top_job_idx = int(job_sims.index(max_job)) if job_sims else -1
+        top_non_job_idx = int(non_job_sims.index(max_non_job)) if non_job_sims else -1
+
+        similarity_block = {
+            'max_job_similarity': max_job,
+            'max_non_job_similarity': max_non_job,
+            'job_similarities': job_sims,
+            'non_job_similarities': non_job_sims,
+            'top_job_reference': predictor.job_reference_texts[top_job_idx] if top_job_idx >= 0 else None,
+            'top_non_job_reference': predictor.non_job_texts[top_non_job_idx] if top_non_job_idx >= 0 else None
+        }
+
+        explanation = {
+            'input_type': 'url' if is_input_url else 'text',
+            'source': source,
+            'validation': meta,
+            'similarities': similarity_block,
+            'scraped_info': scraped_info
+        }
+
+        # If not a job description, return only validation & similarities
+        if not is_valid:
+            return jsonify({'explanation': explanation, 'classification': None}), 200
+
+        # If valid, run classification
+        classification = predictor.predict(job_text, source=source_type)
+        return jsonify({'explanation': explanation, 'classification': classification}), 200
+
+    except Exception as e:
+        print(f"Explain endpoint error: {e}")
+        return jsonify({'error': f'Internal server error: {e}', 'explanation': None}), 500
+
 
 if __name__ == '__main__':
-    # Run Flask app
-    app.run(debug=True)
+    # Run Flask app (match summary: host 0.0.0.0, port 5000, debug True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

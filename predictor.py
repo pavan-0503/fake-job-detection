@@ -17,6 +17,26 @@ warnings.filterwarnings('ignore')
 
 
 class FakeJobPredictor:
+    def clean_text(self, text):
+        """Clean and preprocess text: lowercase, remove URLs, emails, special chars, normalize whitespace"""
+        if text is None:
+            return ""
+        text = str(text).lower()
+        text = re.sub(r'http\S+|www\S+|https\S+', '', text)
+        text = re.sub(r'\S+@\S+', '', text)
+        text = re.sub(r'[^a-zA-Z\s.,!?]', ' ', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+    def get_bert_embedding(self, text, max_length=512):
+        """Generate BERT embedding for text using DistilBERT [CLS] token"""
+        if len(text) == 0:
+            return np.zeros(768)
+        inputs = self.tokenizer(text, return_tensors='pt', max_length=max_length, truncation=True, padding='max_length')
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = self.bert_model(**inputs)
+        embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
+        return embeddings[0]
     def __init__(self, model_dir='models'):
         """Initialize the predictor with saved models"""
         self.model_dir = model_dir
@@ -47,49 +67,81 @@ class FakeJobPredictor:
         )
         self.bert_model = DistilBertModel.from_pretrained('distilbert-base-uncased').to(self.device)
         self.bert_model.eval()
-    
-    def clean_text(self, text):
-        """Clean and preprocess text"""
-        if pd.isna(text) or text is None:
-            return ""
+
+        # Precompute and cache reference embeddings for semantic checks to speed up validation
+        self.job_reference_texts = [
+            "We are hiring for software engineer position with 2 years experience required skills include python java responsibilities include development",
+            "Job opening for marketing manager candidate must have MBA experience in digital marketing apply now with resume",
+            "Looking for data analyst position requires SQL Python experience responsibilities include data analysis reporting",
+            "Sales executive vacancy excellent communication skills required responsibilities include client management",
+            "Immediate opening for content writer work from home flexible hours good writing skills required apply with portfolio"
+        ]
+        self.non_job_texts = [
+            "Sign in to your account browse jobs search companies create profile save jobs get alerts download app",
+            "Breaking news today according to sources the company announced new policy trending now viral",
+            "College admission open fee structure tuition fees hostel fees apply now for engineering degree courses university campus",
+            "Buy now limited offer click here download app subscribe to channel follow us on social media",
+            "University portal student faculty staff parent alumni access academics research services digital platform institute",
+            "Student login employee login parent portal transcript semester registration exam results grade report course enrollment"
+        ]
+        # Expanded with domain-specific non-job samples (encyclopedic + fee structure) to improve semantic separation
+        self.non_job_texts.extend([
+            "Formula One is the highest class of international racing for single-seater formula racing cars sanctioned by the FIA with seasons consisting of multiple Grands Prix events across the world",
+            "The fee structure for the B.Tech Computer Science program includes tuition hostel accommodation and caution deposit with semester wise breakdown of amounts payable",
+            # Educational/AI intro samples
+            "After completing this unit, you’ll be able to explain fundamental concepts of artificial intelligence, identify the challenges that make defining artificial intelligence difficult, describe the types of tasks artificial intelligence can perform.",
+            "Artificial intelligence (AI) has been a dream of many storytellers and sci-fi fans for years. But most people hadn’t given AI much serious thought because it was always something that might happen far into the future.",
+            "Researchers and computer scientists haven’t been waiting for tomorrow to arrive, they’ve been working hard to make the dream of AI into a reality. In fact, as you know, we’re already well into the Age of AI.",
+            # Generic non-job text
+            "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+            "Hello! Welcome to our platform. Please sign in to continue.",
+            "This is a sample paragraph for testing purposes."
+        ])
+
+        # Map each non-job text to a content type (aligned by index)
+        initial_types = [
+            "website navigation/UI elements",  # 0
+            "news articles or blog posts",     # 1
+            "educational/college information", # 2
+            "promotional/spam content",        # 3
+            "university/college portals",      # 4
+            "academic management systems"      # 5
+        ]
+        # ...removed legacy mapping code, now only tuple-based non_job_refs...
+
+        # Compute embeddings once
+        # Non-job reference texts and their content types defined together
+        self.non_job_refs = [
+            ("Sign in to your account browse jobs search companies create profile save jobs get alerts download app", "website navigation/UI elements"),
+            ("Breaking news today according to sources the company announced new policy trending now viral", "news articles or blog posts"),
+            ("College admission open fee structure tuition fees hostel fees apply now for engineering degree courses university campus", "educational/college information"),
+            ("Buy now limited offer click here download app subscribe to channel follow us on social media", "promotional/spam content"),
+            ("University portal student faculty staff parent alumni access academics research services digital platform institute", "university/college portals"),
+            ("Student login employee login parent portal transcript semester registration exam results grade report course enrollment", "academic management systems"),
+            ("Formula One is the highest class of international racing for single-seater formula racing cars sanctioned by the FIA with seasons consisting of multiple Grands Prix events across the world", "news articles or blog posts"),
+            ("The fee structure for the B.Tech Computer Science program includes tuition hostel accommodation and caution deposit with semester wise breakdown of amounts payable", "educational/college information"),
+            # Educational/AI intro samples
+            ("After completing this unit, you’ll be able to explain fundamental concepts of artificial intelligence, identify the challenges that make defining artificial intelligence difficult, describe the types of tasks artificial intelligence can perform.", "education/AI course introduction"),
+            ("Artificial intelligence (AI) has been a dream of many storytellers and sci-fi fans for years. But most people hadn’t given AI much serious thought because it was always something that might happen far into the future.", "education/AI course introduction"),
+            ("Researchers and computer scientists haven’t been waiting for tomorrow to arrive, they’ve been working hard to make the dream of AI into a reality. In fact, as you know, we’re already well into the Age of AI.", "education/AI course introduction"),
+            # Entertainment/biography/news samples
+            ("George Clooney's breakthrough came with his role as Dr. Doug Ross in the NBC medical drama ER for which he received two Primetime Emmy Award nominations. He established himself as a film star with roles in From Dusk till Dawn, Out of Sight, Three Kings, and O Brother, Where Art Thou?", "entertainment/biography news"),
+            ("When Aishwarya Rai rejected a Hollywood movie with Brad Pitt for this reason. She was offered a role in Troy demanding a 6-9 months commitment which she declined due to commitments in India. Brad Pitt later expressed regret over her not joining the film.", "entertainment/celebrity news"),
+            # Generic non-job text
+            ("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.", "generic non-job content"),
+            ("Hello! Welcome to our platform. Please sign in to continue.", "website navigation/UI elements"),
+            ("This is a sample paragraph for testing purposes.", "generic non-job content")
+        ]
+        self.non_job_texts = [t for t, _ in self.non_job_refs]
+        self.non_job_content_types = [ct for _, ct in self.non_job_refs]
         
-        text = str(text).lower()
-        
-        # Remove URLs
-        text = re.sub(r'http\S+|www\S+|https\S+', '', text)
-        
-        # Remove email addresses
-        text = re.sub(r'\S+@\S+', '', text)
-        
-        # Remove special characters and digits
-        text = re.sub(r'[^a-zA-Z\s.,!?]', ' ', text)
-        
-        # Remove extra whitespace
-        text = re.sub(r'\s+', ' ', text).strip()
-        
-        return text
-    
-    def get_bert_embedding(self, text, max_length=512):
-        """Generate BERT embedding for text"""
-        if len(text) == 0:
-            return np.zeros(768)
-        
-        # Tokenize
-        inputs = self.tokenizer(text, 
-                               return_tensors='pt', 
-                               max_length=max_length, 
-                               truncation=True, 
-                               padding='max_length')
-        
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        # Get embeddings
-        with torch.no_grad():
-            outputs = self.bert_model(**inputs)
-        
-        # Use [CLS] token embedding
-        embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
-        return embeddings[0]
+        # Compute embeddings once (after method definitions)
+        # Will be initialized at end of __init__
+        self.job_ref_embeddings = None
+        self.non_job_ref_embeddings = None
+        # At end of __init__, after all methods are defined, and still inside __init__:
+        self.job_ref_embeddings = [self.get_bert_embedding(self.clean_text(t)) for t in self.job_reference_texts]
+        self.non_job_ref_embeddings = [self.get_bert_embedding(self.clean_text(t)) for t in self.non_job_texts]
     
     def extract_features(self, text):
         """Extract custom features from job posting text"""
@@ -140,27 +192,131 @@ class FakeJobPredictor:
     
     def is_job_description(self, text):
         """
-        Validate if the text is actually a job description using semantic understanding with BERT
+        Validate if the text is actually a job description, implementing the
+        summary's checks (min length/words, keywords, spam, CSV headers, edu content)
+        and enhanced with semantic understanding via BERT.
         Returns: (is_valid, reason)
         """
         text_lower = text.lower()
         
-        # Basic sanity checks
-        if len(text) < 50:
-            return False, "Text too short to be a job description (minimum 50 characters required)"
+        # Basic sanity checks (per summary)
+        if len(text) < 20:
+            return False, {"valid": False, "reason": "too_short", "message": "Text too short to be a job description (minimum 20 characters required)", "content_type": None}
         
         words = text.split()
         word_count = len(words)
         
-        if word_count < 20:
-            return False, f"Content too brief ({word_count} words). A proper job description should have at least 20 words."
+        if word_count < 5:
+            return False, {"valid": False, "reason": "too_few_words", "message": f"Content too brief ({word_count} words). Need at least 5 words.", "content_type": None}
         
-        # Check if it's just CSV headers or column names
-        csv_indicators = ['title\tdescription', 'job_id', 'fraudulent', 'telecommuting', 
-                         'has_company_logo', 'has_questions', 'column', 'header', 'dataset']
+        # Check if it's just CSV headers or column names (use specific CSV-format indicators)
+        csv_indicators = ['title\tdescription', 'job_id\t', 'fraudulent\t', 'telecommuting\t', 
+                         'has_company_logo', 'has_questions', '\tcolumn\t', '\theader\t']
         if any(indicator in text_lower for indicator in csv_indicators):
-            return False, "This appears to be data headers or metadata, not a job description."
+            return False, {"valid": False, "reason": "metadata", "message": "This appears to be data headers or metadata, not a job description.", "content_type": "metadata"}
         
+        # Job-related keyword presence (per summary)
+        job_keywords = [
+            'job', 'position', 'role', 'hiring', 'vacancy', 'career', 'employment',
+            'work', 'responsibilities', 'requirements', 'qualifications', 'experience',
+            'salary', 'apply', 'candidate', 'skills', 'duties', 'recruit', 'team',
+            'opportunity', 'developer', 'engineer', 'manager', 'analyst', 'specialist',
+            'coordinator', 'assistant', 'executive', 'intern', 'full time', 'part time',
+            'remote', 'office', 'company', 'department', 'benefits', 'compensation',
+            'fresher', 'opening', 'join', 'wanted'
+        ]
+        # More precise keyword detection using word boundaries for single-word tokens to avoid matching substrings like 'engineer' within 'engineering'
+        job_keyword_hits = []
+        for kw in job_keywords:
+            if ' ' in kw:  # multi-word phrase exact substring match
+                if kw in text_lower:
+                    job_keyword_hits.append(kw)
+            else:
+                if re.search(r'\b' + re.escape(kw) + r'\b', text_lower):
+                    job_keyword_hits.append(kw)
+        has_job_keyword = len(job_keyword_hits) > 0
+
+        # Non-job topic detectors
+        ui_indicators = [
+            'home', 'header', 'footer', 'menu', 'logo', 'analyze job', 'analyze job posting',
+            'examples:', 'supported:', 'powered by', 'confidence level', 'source', 'privacy', 'contact',
+            'how it works', 'copyright', 'terms', 'detectify', 'ai-powered job verification'
+        ]
+        ui_count = sum(1 for ind in ui_indicators if ind in text_lower)
+
+        education_info_indicators = [
+            'university', 'college', 'course', 'program', 'b.tech', 'btech', 'engineering',
+            'fee', 'fees', 'tuition', 'caution deposit', 'hostel', 'accommodation', 'semester',
+            'admission', 'eligibility', 'syllabus', 'credits', 'intake'
+        ]
+        edu_info_count = sum(1 for ind in education_info_indicators if ind in text_lower)
+
+        news_indicators = [
+            'breaking news', 'world championship', 'season', 'races', 'grands prix', 'fédération internationale',
+            'fia', 'history', 'since', 'wikipedia', 'motorsport', 'premier forms', 'series of'
+        ]
+        news_count = sum(1 for ind in news_indicators if ind in text_lower)
+
+        # Entertainment/biography/celebrity news indicators
+        entertainment_indicators = [
+            'film', 'movie', 'tv series', 'television', 'drama', 'episode', 'season', 'cast', 'role as', 'biography',
+            'award', 'awards', 'emmy', 'oscar', 'box office', 'hollywood', 'bollywood', 'actor', 'actress', 'director',
+            'trailer', 'release', 'soundtrack', 'starred', 'starring', 'festival'
+        ]
+        entertainment_count = sum(1 for ind in entertainment_indicators if ind in text_lower)
+
+        # Meta/instructional/system text indicators (not an actual job description)
+        meta_instruction_indicators = [
+            'this is not a command', 'this a text not command', 'should also check', 'you should also check',
+            'tell them', 'we should', 'for comparison', 'our ai', 'confidence means', 'score', 'scored',
+            'percent confidence', 'model is reasonably certain', 'missing information', 'less-structured sources',
+            'example text', 'sample text', 'demo text', 'instruction', 'instructions', 'guideline', 'prompt',
+            'consider the following', 'you need to', 'please check', 'explain', 'means our ai'
+        ]
+        meta_instruction_count = sum(1 for ind in meta_instruction_indicators if ind in text_lower)
+
+        # Structural employment patterns (signals of actual job structure)
+        employment_patterns = [
+            'responsibilities include', 'requirements include', 'we are hiring', 'we are looking for',
+            'apply with', 'apply now', 'skills required', 'experience required', 'candidate must',
+            'job description', 'position involves', 'the role', 'the successful candidate', 'join our team'
+        ]
+        employment_pattern_hits = sum(1 for ptn in employment_patterns if ptn in text_lower)
+        
+        # Spam/non-job indicators (per summary) - reject if 3+ strong indicators present
+        spam_indicators = [
+            'registration fee', 'pay to apply', 'deposit', 'upfront payment', 'money transfer',
+            'whatsapp', 'telegram', 'click here', 'limited offer', 'guaranteed income',
+            'earn per day', 'no experience needed', 'work from home and earn', 'lottery', 'gift card'
+        ]
+        spam_hits = sum(1 for s in spam_indicators if s in text_lower)
+        if spam_hits >= 3:
+            return False, {"valid": False, "reason": "spam_content", "message": "Detected multiple spam indicators (>=3).", "content_type": "spam"}
+
+        # UI/Navigation pages (override even if job keywords appear)
+        if ui_count >= 3 and employment_pattern_hits == 0:
+            return False, {"valid": False, "reason": "website_navigation", "message": "Website UI / navigation content detected.", "content_type": "website navigation/UI elements"}
+
+        # Education info (not portal) - fees/admissions/course details
+        if edu_info_count >= 3 and employment_pattern_hits == 0 and has_job_keyword is False:
+            return False, {"valid": False, "reason": "education_info", "message": "Educational fee/course/admission information detected.", "content_type": "education",
+                           "debug_counts": {"edu_info_count": edu_info_count, "job_keywords": job_keyword_hits, "news_count": news_count}}
+
+        # News/article content
+        if news_count >= 3 and employment_pattern_hits == 0 and has_job_keyword is False:
+            return False, {"valid": False, "reason": "news_article", "message": "News / encyclopedic topic detected.", "content_type": "news articles or blog posts",
+                           "debug_counts": {"edu_info_count": edu_info_count, "job_keywords": job_keyword_hits, "news_count": news_count}}
+
+        # Entertainment/biography/celebrity content (override even if words like 'role' appear)
+        if entertainment_count >= 3 and employment_pattern_hits == 0:
+            return False, {"valid": False, "reason": "entertainment_news", "message": "Entertainment/biography news detected.", "content_type": "entertainment/celebrity news",
+                           "debug_counts": {"entertainment_count": entertainment_count, "job_keywords": job_keyword_hits, "news_count": news_count}}
+
+        # Meta/instructional/system text (guidance/notes, not a job)
+        if meta_instruction_count >= 2 and employment_pattern_hits == 0:
+            return False, {"valid": False, "reason": "meta_instruction", "message": "Detected instructional/meta text, not a job description.", "content_type": "meta/instruction",
+                           "debug_counts": {"meta_instruction_count": meta_instruction_count, "job_keywords": job_keyword_hits}}
+
         # Check for repetitive/garbage text (same word repeated many times)
         word_freq = {}
         for word in words[:100]:  # Check first 100 words
@@ -169,7 +325,7 @@ class FakeJobPredictor:
         # If any word appears more than 30% of the time, it's likely garbage
         max_freq = max(word_freq.values()) if word_freq else 0
         if max_freq > len(words[:100]) * 0.3:
-            return False, "Text appears to be repetitive or corrupted. Please provide a clean job description."
+            return False, {"valid": False, "reason": "repetitive_corrupted", "message": "Text appears to be repetitive or corrupted.", "content_type": "noise"}
         
         # === SEMANTIC UNDERSTANDING WITH BERT ===
         # Instead of keyword matching, use BERT to understand the context
@@ -179,7 +335,7 @@ class FakeJobPredictor:
         if len(cleaned_text) < 10:
             return False, "Text doesn't contain meaningful content after cleaning."
         
-        # Check for explicit college/university/portal indicators first
+        # Check for explicit college/university/portal indicators first (per summary)
         edu_portal_indicators = [
             'vtop', 'student portal', 'university portal', 'college portal',
             'student login', 'faculty login', 'parent login', 'alumni login',
@@ -189,43 +345,24 @@ class FakeJobPredictor:
             'course registration', 'exam results', 'grade report'
         ]
         edu_count = sum(1 for indicator in edu_portal_indicators if indicator in text_lower)
-        if edu_count >= 2:
-            return False, "This appears to be a university/college portal or academic system, not a job posting."
+        # Align with summary: reject when there are 3 or more such indicators
+        if edu_count >= 3:
+            return False, {"valid": False, "reason": "educational_portal", "message": "Educational portal / academic system content detected.", "content_type": "education",
+                           "debug_counts": {"edu_portal_count": edu_count, "job_keywords": job_keyword_hits}}
         
         input_embedding = self.get_bert_embedding(cleaned_text)
         
-        # Define reference job posting examples (these will be compared semantically)
-        job_reference_texts = [
-            "We are hiring for software engineer position with 2 years experience required skills include python java responsibilities include development",
-            "Job opening for marketing manager candidate must have MBA experience in digital marketing apply now with resume",
-            "Looking for data analyst position requires SQL Python experience responsibilities include data analysis reporting",
-            "Sales executive vacancy excellent communication skills required responsibilities include client management",
-            "Immediate opening for content writer work from home flexible hours good writing skills required apply with portfolio"
-        ]
-        
-        # Define non-job reference examples (expanded with educational portals)
-        non_job_texts = [
-            "Sign in to your account browse jobs search companies create profile save jobs get alerts download app",
-            "Breaking news today according to sources the company announced new policy trending now viral",
-            "College admission open fee structure tuition fees hostel fees apply now for engineering degree courses university campus",
-            "Buy now limited offer click here download app subscribe to channel follow us on social media",
-            "University portal student faculty staff parent alumni access academics research services digital platform institute",
-            "Student login employee login parent portal transcript semester registration exam results grade report course enrollment"
-        ]
-        
-        # Calculate cosine similarity with job references
+        # Calculate cosine similarity with job references (use cached embeddings)
         job_similarities = []
-        for ref_text in job_reference_texts:
-            ref_embedding = self.get_bert_embedding(self.clean_text(ref_text))
+        for ref_embedding in self.job_ref_embeddings:
             similarity = np.dot(input_embedding, ref_embedding) / (
                 np.linalg.norm(input_embedding) * np.linalg.norm(ref_embedding)
             )
             job_similarities.append(similarity)
         
-        # Calculate cosine similarity with non-job references
+        # Calculate cosine similarity with non-job references (use cached embeddings)
         non_job_similarities = []
-        for ref_text in non_job_texts:
-            ref_embedding = self.get_bert_embedding(self.clean_text(ref_text))
+        for ref_embedding in self.non_job_ref_embeddings:
             similarity = np.dot(input_embedding, ref_embedding) / (
                 np.linalg.norm(input_embedding) * np.linalg.norm(ref_embedding)
             )
@@ -239,41 +376,43 @@ class FakeJobPredictor:
         # If text is more similar to non-job content by a significant margin, reject it
         # Allow a small margin (0.05) for close calls since scraped pages often contain navigation
         if max_non_job_sim > max_job_sim + 0.05:
-            return False, f"This doesn't appear to be a job description. The content is more similar to {self._get_content_type(max_non_job_sim, non_job_texts, input_embedding)} (similarity: {max_non_job_sim:.2f} vs job content: {max_job_sim:.2f})."
+            content_type = self._get_content_type(self.non_job_ref_embeddings, self.non_job_texts, input_embedding)
+            return False, {"valid": False, "reason": "semantic_non_job", "message": f"Content semantically closer to {content_type}.", "content_type": content_type,
+                           "debug_similarity": {"max_job_sim": max_job_sim, "max_non_job_sim": max_non_job_sim,
+                                                 "job_keywords": job_keyword_hits, "edu_info_count": edu_info_count, "news_count": news_count}}
         
-        # If similarity to job content is too low overall, reject
-        # Threshold of 0.45 to allow real jobs with some navigation text
-        if max_job_sim < 0.45:
-            return False, f"This doesn't appear to be job-related content. Semantic similarity to job postings is too low ({max_job_sim:.2f}, need at least 0.45)."
+        # If similarity to job content is too low overall, reject (allow some leniency for scraped pages)
+        # Require either decent job similarity or presence of employment structure
+        if max_job_sim < 0.45 and employment_pattern_hits == 0:
+            return False, {"valid": False, "reason": "low_job_similarity", "message": f"Job similarity too low ({max_job_sim:.2f} < 0.45) and no employment patterns detected.", "content_type": "non_job",
+                           "debug_similarity": {"max_job_sim": max_job_sim, "max_non_job_sim": max_non_job_sim,
+                                                 "job_keywords": job_keyword_hits, "edu_info_count": edu_info_count, "news_count": news_count}}
+
+        # Enforce keyword presence unless semantic similarity is clearly strong
+        if not has_job_keyword and employment_pattern_hits == 0 and max_job_sim < 0.55:
+            return False, {"valid": False, "reason": "missing_keywords", "message": "Missing job-related keywords.", "content_type": "non_job",
+                           "debug_similarity": {"max_job_sim": max_job_sim, "max_non_job_sim": max_non_job_sim,
+                                                 "job_keywords": job_keyword_hits, "edu_info_count": edu_info_count, "news_count": news_count}}
         
         # All checks passed - looks like a job description
-        return True, None
+        return True, {"valid": True, "reason": None, "message": None, "content_type": "job",
+                      "debug_counts": {"edu_info_count": edu_info_count, "news_count": news_count, "job_keywords": job_keyword_hits,
+                                        "employment_pattern_hits": employment_pattern_hits}}
     
-    def _get_content_type(self, similarity, reference_texts, input_embedding):
-        """Helper to identify which type of non-job content it matches"""
-        # Find which reference text had the highest similarity
+    def _get_content_type(self, reference_embeddings, reference_texts, input_embedding):
+        """Helper to identify which type of non-job content it matches (uses cached embeddings)"""
+        # Find which reference embedding had the highest similarity
         similarities = []
-        for ref_text in reference_texts:
-            ref_embedding = self.get_bert_embedding(self.clean_text(ref_text))
+        for ref_embedding in reference_embeddings:
             sim = np.dot(input_embedding, ref_embedding) / (
                 np.linalg.norm(input_embedding) * np.linalg.norm(ref_embedding)
             )
             similarities.append(sim)
         
         max_idx = similarities.index(max(similarities))
-        
-        # Map to content types
-        content_types = [
-            "website navigation/UI elements",
-            "news articles or blog posts",
-            "educational/college information", 
-            "promotional/spam content",
-            "university/college portals",
-            "academic management systems"
-        ]
-        
-        if max_idx < len(content_types):
-            return content_types[max_idx]
+        # Use expanded mapping list
+        if hasattr(self, 'non_job_content_types') and max_idx < len(self.non_job_content_types):
+            return self.non_job_content_types[max_idx]
         return "non-job content"
     
     def is_job_expired(self, text):
@@ -304,49 +443,58 @@ class FakeJobPredictor:
             if phrase in text_lower:
                 return True, f"Job posting explicitly states: '{phrase}'", None
         
-        # 2. Extract and parse deadline dates
-        # Common deadline patterns
-        deadline_patterns = [
-            r'(?:apply by|deadline|last date|close(?:s|d)?\s+on|submit by|applications? close(?:s|d)?\s+on)\s*:?\s*([^.\n]+)',
-            r'(?:applications? accepted until|applications? open until)\s*:?\s*([^.\n]+)',
-            r'(?:valid till|valid until)\s*:?\s*([^.\n]+)'
+        # 2. Extract and parse deadline/apply-by dates
+        # Patterns that precede dates
+        deadline_triggers = [
+            'last date to apply', 'last date for application', 'last date', 'apply by', 'apply before',
+            'application deadline', 'deadline to apply', 'closing date', 'applications close on',
+            'apply until', 'apply till', 'apply before'
         ]
-        
-        current_date = datetime.now()
-        
-        for pattern in deadline_patterns:
-            matches = re.finditer(pattern, text_lower, re.IGNORECASE)
-            for match in matches:
-                date_str = match.group(1).strip()
-                
-                # Try to parse the date using dateparser
-                try:
-                    parsed_date = dateparser.parse(date_str, settings={'PREFER_DATES_FROM': 'past'})
-                    
-                    if parsed_date:
-                        # Compare with current date
-                        if parsed_date < current_date:
-                            days_ago = (current_date - parsed_date).days
-                            return True, f"Application deadline was {parsed_date.strftime('%B %d, %Y')} ({days_ago} days ago)", parsed_date.strftime('%Y-%m-%d')
-                        else:
-                            # Future deadline - job is still open
-                            days_remaining = (parsed_date - current_date).days
-                            return False, f"Job is still open. Deadline: {parsed_date.strftime('%B %d, %Y')} ({days_remaining} days remaining)", parsed_date.strftime('%Y-%m-%d')
-                except:
-                    # If parsing fails, continue to next match
-                    continue
-        
-        # 3. Check for relative date expressions that might indicate closure
-        relative_closed_patterns = [
-            r'closed\s+(\d+)\s+(day|week|month|year)s?\s+ago',
-            r'expired\s+(\d+)\s+(day|week|month|year)s?\s+ago'
-        ]
-        
-        for pattern in relative_closed_patterns:
-            match = re.search(pattern, text_lower)
-            if match:
-                return True, f"Job posting mentions it closed {match.group(0)}", None
-        
+
+        # Regex to capture various date formats following triggers
+        date_regex = r"([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})"
+
+        candidates = []
+        for trig in deadline_triggers:
+            # find occurrences and slice a window after trigger
+            idx = 0
+            while True:
+                pos = text_lower.find(trig, idx)
+                if pos == -1:
+                    break
+                window = text[pos:pos+80]  # small window after trigger
+                m = re.search(date_regex, window, flags=re.IGNORECASE)
+                if m:
+                    candidates.append(m.group(1))
+                idx = pos + 1
+
+        # Also attempt standalone date with words like 'deadline:'
+        for label in ['deadline', 'closing date', 'apply before', 'apply by']:
+            pattern = label + r"[:\s-]*" + date_regex
+            for m in re.finditer(pattern, text, flags=re.IGNORECASE):
+                candidates.append(m.group(1))
+
+        parsed_dates = []
+        now = datetime.now()
+        for ds in candidates:
+            try:
+                dt = dateparser.parse(ds, settings={'DATE_ORDER': 'DMY', 'PREFER_DAY_OF_MONTH': 'first'})
+                if dt:
+                    parsed_dates.append(dt)
+            except Exception:
+                continue
+
+        if parsed_dates:
+            # choose the first or earliest reasonable future/past deadline
+            # Prefer the nearest future date; if none, take the latest past date
+            future_dates = [d for d in parsed_dates if d.date() >= now.date()]
+            if future_dates:
+                deadline = min(future_dates)
+                return False, f"Application deadline {deadline.date().isoformat()}", deadline.date().isoformat()
+            else:
+                deadline = max(parsed_dates)
+                return True, f"Deadline passed on {deadline.date().isoformat()}", deadline.date().isoformat()
+
         # If no expiration indicators found, assume job is still open
         return False, None, None
     
@@ -387,14 +535,21 @@ class FakeJobPredictor:
             raise ValueError("Input must be a string or dictionary")
         
         # Validate if it's a job description
-        is_valid, validation_error = self.is_job_description(combined_text)
+        is_valid, meta = self.is_job_description(combined_text)
         if not is_valid:
+            # Include debug meta when available for easier troubleshooting
+            debug_counts = meta.get('debug_counts') if isinstance(meta, dict) else None
+            debug_similarity = meta.get('debug_similarity') if isinstance(meta, dict) else None
             return {
                 'prediction': 'Not a Job Description',
                 'confidence': 0.0,
                 'probability_fake': 0.0,
                 'probability_legit': 0.0,
-                'error': validation_error,
+                'error': meta.get('message') if isinstance(meta, dict) else str(meta),
+                'reason': meta.get('reason') if isinstance(meta, dict) else None,
+                'content_type': meta.get('content_type') if isinstance(meta, dict) else None,
+                'debug_counts': debug_counts,
+                'debug_similarity': debug_similarity,
                 'is_job': False
             }
         
@@ -474,7 +629,8 @@ class FakeJobPredictor:
             'probability_legit': prob_legit,
             'probability_fake': prob_fake,
             'threshold': float(self.threshold),
-            'is_job': True
+            'is_job': True,
+            'content_type': 'job'
         }
         
         # Add deadline info if available

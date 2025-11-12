@@ -9,6 +9,10 @@ import re
 from urllib.parse import urlparse
 import time
 import warnings
+import urllib3
+
+# Disable SSL warnings since we're disabling verification for scraping
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 warnings.filterwarnings('ignore')
 
 # Try to import Selenium for JavaScript-rendered sites
@@ -52,6 +56,10 @@ class JobScraper:
             chrome_options.add_argument('--window-size=1920,1080')
             chrome_options.add_argument(f'user-agent={self.headers["User-Agent"]}')
             chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+            chrome_options.add_argument('--ignore-certificate-errors')
+            chrome_options.add_argument('--ignore-ssl-errors')
+            chrome_options.add_argument('--allow-insecure-localhost')
+            chrome_options.add_argument('--allow-running-insecure-content')
             chrome_options.add_experimental_option('excludeSwitches', ['enable-automation'])
             chrome_options.add_experimental_option('useAutomationExtension', False)
             
@@ -62,17 +70,22 @@ class JobScraper:
             }
             chrome_options.add_experimental_option('prefs', prefs)
             
+            print("Installing/updating ChromeDriver...")
             # Auto-install ChromeDriver
             service = Service(ChromeDriverManager().install())
+            print("Creating Chrome driver instance...")
             driver = webdriver.Chrome(service=service, options=chrome_options)
             driver.set_page_load_timeout(20)
             
             # Make Selenium undetectable
             driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             
+            print("Selenium driver ready!")
             return driver
         except Exception as e:
             print(f"Selenium setup failed: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def scrape_url(self, url):
@@ -99,14 +112,29 @@ class JobScraper:
             domain = parsed.netloc.lower()
             
             # Check if it's a JavaScript-heavy site
-            js_sites = ['naukri', 'linkedin', 'indeed', 'glassdoor', 'monster', 'jobhai', 'jobslink']
+            # JavaScript-heavy sites that should use Selenium
+            js_sites = [
+                'naukri', 'linkedin', 'indeed', 'glassdoor', 'monster', 'jobhai', 'jobslink',
+                'timesjobs', 'timesascent', 'shine', 'foundit', 'monsterindia'
+            ]
             needs_selenium = any(site in domain for site in js_sites)
             
             # Try Selenium first for known JS sites if available
             if needs_selenium and self.use_selenium:
+                print(f"Attempting Selenium scrape for {domain}...")
                 result = self._scrape_with_selenium(url)
-                if result and len(result.get('full_text', '')) > 100:
+                if result and not result.get('error') and len(result.get('full_text', '')) > 100:
+                    print(f"Selenium scrape successful: {len(result['full_text'])} chars")
                     return result
+                elif result and result.get('error'):
+                    print(f"Selenium error: {result['error']}")
+                    # Return the error from Selenium rather than falling back
+                    return result
+                else:
+                    print("Selenium returned insufficient content, trying fallback...")
+            
+            # Fallback methods (only if Selenium not available or didn't work)
+            print(f"Using fallback scraper for {domain}...")
             
             # Determine scraping strategy based on domain
             if 'linkedin' in domain:
@@ -148,22 +176,36 @@ class JobScraper:
         """
         driver = None
         try:
-            driver = self._setup_selenium_driver()
+            # Reuse driver for speed
+            driver = self._get_or_create_driver() if hasattr(self, '_get_or_create_driver') else self._setup_selenium_driver()
             if not driver:
-                return None
+                print("Failed to setup Selenium driver")
+                return {
+                    'title': '',
+                    'company': '',
+                    'description': '',
+                    'location': '',
+                    'full_text': '',
+                    'source': urlparse(url).netloc.lower(),
+                    'error': "Failed to initialize Selenium WebDriver. Chrome or ChromeDriver may not be installed."
+                }
             
-            print(f"Using Selenium for: {url}")
+            print(f"Loading URL with Selenium: {url}")
             driver.get(url)
             
             # Wait for page to load - wait for body or main content
             try:
-                WebDriverWait(driver, 10).until(
+                WebDriverWait(driver, 6).until(
                     EC.presence_of_element_located((By.TAG_NAME, "body"))
                 )
-                # Additional wait for dynamic content
-                time.sleep(3)
+                # Shorter general wait
+                time.sleep(1)
             except:
                 pass
+
+            # Site-specific extra wait for JobsLink (content loads late)
+            if 'jobslink.in' in url.lower():
+                time.sleep(2.5)
             
             # Check for 404 or error pages
             page_title = driver.title.lower()
@@ -178,14 +220,15 @@ class JobScraper:
             ]
             
             if any(indicator in page_title for indicator in error_indicators):
-                driver.quit()
+                if 'linkedin.com' in url:
+                    driver.quit()
                 return {
                     'title': '',
                     'company': '',
                     'description': '',
                     'location': '',
                     'full_text': '',
-                    'source': 'Selenium',
+                    'source': urlparse(url).netloc.lower(),
                     'error': f"Job posting not found (404 or removed). Page title: {driver.title}"
                 }
             
@@ -201,7 +244,7 @@ class JobScraper:
                         'description': '',
                         'location': '',
                         'full_text': '',
-                        'source': 'Selenium',
+                        'source': urlparse(url).netloc.lower(),
                         'error': f"Invalid LinkedIn URL - landed on search results page. Please open a specific job posting."
                     }
             
@@ -262,6 +305,15 @@ class JobScraper:
                 if text and 20 < len(text) < 500:
                     all_text_parts.append(text)
             
+            # Domain-specific cleanup for JobsLink: remove navigation/boilerplate sections
+            if 'jobslink.in' in url.lower():
+                noise_phrases = [
+                    'jobs by category', 'jobs by location', 'trending jobs', 'fresher jobs', 'work from home',
+                    'walkin jobs', 'internship', 'campus drive', 'government jobs', 'explore exams', 'exam notifications',
+                    'quick links', 'follow us', 'similar jobs', 'copyright', 'international jobs'
+                ]
+                all_text_parts = [t for t in all_text_parts if not any(phr in t.lower() for phr in noise_phrases)]
+
             # Combine description (if not already extracted from LinkedIn-specific div)
             if not description:
                 description = ' '.join(all_text_parts)
@@ -270,29 +322,42 @@ class JobScraper:
             company = self._extract_company(soup)
             location = self._extract_location(soup)
             
-            full_text = f"{title} {company} {location} {description}"
+            # For full_text, only include company/location if they look valid (no numbers/weird text)
+            valid_company = company if company and not any(char.isdigit() for char in company[:20]) else ''
+            valid_location = location if location and location.lower() not in ['clear text', 'text', 'clear'] else ''
             
-            driver.quit()
+            full_text = f"{title} {valid_company} {valid_location} {description}".strip()
             
+            # For reused driver: DO NOT quit, keep session alive
             return {
                 'title': title,
                 'company': company,
                 'description': description,
                 'location': location,
                 'full_text': full_text,
-                'source': 'Selenium',
+                'source': urlparse(url).netloc.lower(),
                 'error': None
             }
             
         except Exception as e:
-            if driver:
-                driver.quit()
-            print(f"Selenium scraping failed: {e}")
-            return None
+            # Keep driver for reuse unless it's totally broken
+            error_msg = str(e)
+            print(f"Selenium scraping failed: {error_msg}")
+            
+            # Return error rather than None so we don't fall back to requests
+            return {
+                'title': '',
+                'company': '',
+                'description': '',
+                'location': '',
+                'full_text': '',
+                'source': urlparse(url).netloc.lower(),
+                'error': f"Selenium scraping failed: {error_msg}"
+            }
     
     def _fetch_page(self, url):
         """Fetch webpage content"""
-        response = requests.get(url, headers=self.headers, timeout=self.timeout)
+        response = requests.get(url, headers=self.headers, timeout=self.timeout, verify=False)
         response.raise_for_status()
         return BeautifulSoup(response.content, 'html.parser')
     

@@ -1,77 +1,40 @@
-# Fake Job Detection API# 🔍 Fake Job Alert Detection System
+# 🔍 Fake Job Alert Detection System
 
-
-
-## 🚀 Live DemoA complete machine learning system that detects whether a job posting is legitimate or fake using **DistilBERT embeddings** combined with a **RandomForest classifier**.
-
-Deployed on Railway: `https://your-app-name.up.railway.app`
+A complete machine learning system that detects whether a job posting is legitimate or fake using **DistilBERT embeddings** combined with a **RandomForest classifier**.
 
 ## 🌟 Features
 
-## 📊 Features
-
-- Detect fake job postings with 89% accuracy- **Advanced ML Model**: Combines DistilBERT (768-dim embeddings) with custom engineered features
-
-- Analyze job text or URLs directly- **Multi-Source Support**: Accepts raw text, structured data, or job posting URLs
-
-- Web scraping support for major job sites- **Web Scraping**: Automatically scrapes job details from LinkedIn, Naukri, Indeed, TimesJobs, etc.
-
-- Expiration detection- **REST API**: Flask backend with CORS support
-
-- Confidence scores with source reputation boost- **Interactive UI**: Beautiful web interface for instant predictions
-
+- **Advanced ML Model**: Combines DistilBERT (768-dim embeddings) with custom engineered features
+- **Multi-Source Support**: Accepts raw text, structured data, or job posting URLs
+- **Web Scraping**: Automatically scrapes job details from LinkedIn, Naukri, Indeed, TimesJobs, etc.
+- **REST API**: Flask backend with CORS support
+- **Interactive UI**: Beautiful web interface for instant predictions
 - **High Accuracy**: Balanced RandomForest with 300 trees for robust classification
 
-## 🔧 Tech Stack
+## 📋 Requirements
 
-- **ML**: DistilBERT + RandomForest (600 trees, calibrated)## 📋 Requirements
-
-- **Backend**: Flask + Gunicorn
-
-- **Scraping**: Selenium + BeautifulSoup- Python 3.8+
-
-- **Deployment**: Railway- CUDA-capable GPU (optional, for faster training)
-
+- Python 3.8+
+- CUDA-capable GPU (optional, for faster training)
 - 4GB+ RAM recommended
-
-## 📡 API Usage
 
 ## 🚀 Quick Start
 
-### Health Check
-
-```bash### Option A: Automated Setup (Recommended for Windows)
-
-curl https://your-app-name.up.railway.app/health
-
-``````bash
-
-# Run the setup script (creates venv and installs dependencies)
-
-### Predictsetup.bat          # or setup.ps1 for PowerShell
+### Option A: Automated Setup (Recommended for Windows)
 
 ```bash
+# Run the setup script (creates venv and installs dependencies)
+setup.bat          # or setup.ps1 for PowerShell
 
-curl -X POST https://your-app-name.up.railway.app/predict \# Train the model
+# Train the model
+run_train.bat      # or run_train.ps1
 
-  -H "Content-Type: application/json" \run_train.bat      # or run_train.ps1
-
-  -d '{"input": "your job description or URL"}'
-
-```# Start the web application
-
+# Start the web application
 run_app.bat        # or run_app.ps1
-
-## 🎯 Supported Job Sites```
-
-LinkedIn, Naukri, Indeed, Glassdoor, Monster, Foundit, TimesJobs, Shine, JobHai
+```
 
 ### Option B: Manual Setup
 
-## 📄 License
-
-Educational project for fake job detection```bash
-
+```bash
 # Create virtual environment
 python -m venv venv
 
